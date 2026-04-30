@@ -8,6 +8,9 @@ The AI Agent dynamically chooses the most relevant Google Sheets dataset, retrie
 
 <img width="2670" height="1242" alt="Workflow overview" src="https://github.com/user-attachments/assets/63136991-fc8d-4bd8-bd0d-71eaf6c7fc5f" />
 
+
+<img width="1394" height="795" alt="image" src="https://github.com/user-attachments/assets/aaab5729-a8c4-48b7-98b3-2dc1e508f456" />
+
 ---
 
 ## What This Workflow Does
