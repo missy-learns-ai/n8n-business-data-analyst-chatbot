@@ -1,0 +1,408 @@
+{
+  "name": "business-data-analyst-chatbot",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a business data analyst. You have access to one or more Google Sheets tools. Each tool may contain a different dataset.\n\nFor every user question:\n1. Understand the business question and determine what type of data is needed.\n2. Select the most relevant Google Sheets tool or tools based on the user’s question and the tool descriptions.\n3. Retrieve the data before answering.\n4. Analyze only the retrieved spreadsheet data.\n5. Dynamically identify the relevant columns, metrics, filters, and groupings.\n6. Perform calculations such as totals, averages, counts, percentages, rankings, comparisons, trends, correlations, and summaries where relevant.\n7. If multiple datasets are needed, combine insights logically using matching columns if available.\n8. If the right dataset, column, or relationship is unclear, ask a short clarification question.\n9. If the data is missing or insufficient, clearly explain what is missing.\n\nDo not invent data.\nDo not answer from memory.\nDo not assume a specific sheet structure.\nDo not mention workflow or tool details unless the user asks.\nReturn a clear business-friendly answer in a top-down communication fashion. Top-down means that you would start with your key point first, then provide supporting arguments. \nReturn the answer as a  clean Markdown for a chat user with numbers, insights, and recommendations where useful.\nDo not return JSON. \nDo not include escaped newline characters. \nDo not end with a follow-up question unless the user explicitly asks for one."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        80,
+        0
+      ],
+      "id": "e5e31fdf-737c-406c-887c-d6d2321d50a6",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        96,
+        336
+      ],
+      "id": "e23ee5e6-10ae-414d-8288-d7a84a31a4ba",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -320,
+        336
+      ],
+      "id": "8f6256ac-7d37-4535-9080-3d3a0dca6995",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "YOUR_OPENAI_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ECOMMERCE_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "E-commerce Orders & Customer Analysis",
+          "cachedResultUrl": "YOUR_ECOMMERCE_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "YOUR_ECOMMERCE_GOOGLE_SHEET_TAB_URL"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        448,
+        336
+      ],
+      "id": "18a994f5-2e75-4e26-8b74-2ccd523f9a3f",
+      "name": "E-commerce Orders & Customer Analysis",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c5e911e3-5aa2-4f6f-8433-50fa663bdf55",
+              "name": "response",
+              "value": "={{ $json.output.replace(/\\\\n/g, '\\n') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        608,
+        0
+      ],
+      "id": "ea2ea688-6780-491a-a758-941f076ff583",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.response }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        0
+      ],
+      "id": "ba4a4417-b727-45f1-a301-18e75c8f902b",
+      "name": "Chat",
+      "webhookId": "YOUR_CHAT_RESPONSE_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "content": "## Workflow\n\n1. User asks a business question and starts a conversation related to the data\n2. AI Agent starts its work\n3. Refers to the right dataset in Google Sheet\n4. Analyse the data and builds insights\n4. Edit Fields\n5. Chat response node sends back an insightful response to your question",
+        "height": 208,
+        "width": 720,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1248,
+        -192
+      ],
+      "typeVersion": 1,
+      "id": "49a52a96-be4f-48f6-b506-93d84920f2b1",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Understand sthe question\nSelects the right Google Sheets tool\nRetrieves the data\nAnalyzes the data\nReturns the result in the required format",
+        "height": 320,
+        "width": 512
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -80,
+        -160
+      ],
+      "typeVersion": 1,
+      "id": "46a09736-3d8d-4624-9825-f5afbe951cf3",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -320,
+        0
+      ],
+      "id": "a492f95a-e09a-4fb8-8e87-852912fa3c20",
+      "name": "Start Conversation",
+      "webhookId": "YOUR_CHAT_TRIGGER_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "content": "Use this tool to retrieve order-level e-commerce sales data, including customer, gender, payment method, product category, quantity, price, region, order status, and rating.",
+        "height": 272,
+        "width": 592
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        352,
+        240
+      ],
+      "typeVersion": 1,
+      "id": "433cca8d-cc1d-4c0a-98dc-d8839d629ca0",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Converts the AI Agent’s output field into a clean response field for the chat.\nThis expression helps convert escaped newline text into actual line breaks.",
+        "height": 272,
+        "width": 368
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        464,
+        -112
+      ],
+      "typeVersion": 1,
+      "id": "97d9370a-1d2e-48f0-8b4e-a95156684d58",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "Responding back to the user",
+        "height": 208,
+        "width": 288,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        864,
+        -48
+      ],
+      "typeVersion": 1,
+      "id": "c2e2fbcb-72ec-48a6-9010-f4aa42b26e03",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "Setup Open AI Connection. \n### Keep your API key private",
+        "height": 272,
+        "width": 336,
+        "color": 3
+      },
+      "id": "d26295d7-99ec-451d-9d59-7662884067f3",
+      "name": "Sticky Note9",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -448,
+        240
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "Start your conversation",
+        "height": 192,
+        "width": 320,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -432,
+        -32
+      ],
+      "typeVersion": 1,
+      "id": "7c64a60a-fe05-4b9d-9af0-c12bd22f09fc",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "Stores past 5 conversations to get the context of the topic",
+        "height": 272,
+        "width": 368
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -48,
+        240
+      ],
+      "typeVersion": 1,
+      "id": "dcab4735-5b77-4907-b81c-02e1f7c17758",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "# Business Data Analyst Chatbot\n\nThis workflow creates a chat-based business analyst assistant in n8n. The assistant can answer business questions by retrieving data from one or more connected Google Sheets datasets, analyzing the data, and returning a clean stakeholder-friendly response in chat.\n\n## Overview\n\nThe workflow allows a user to ask natural-language business questions such as:\n\n- How are PayPal orders distributed between men and women?\n- Which product category has the highest sales?\n- Which region has the highest return rate?\n- What are the top-performing products?\n- How does customer rating vary by sales channel?\n\nThe AI Agent dynamically selects the relevant Google Sheets tool, retrieves the spreadsheet data, performs the analysis, and returns a business-friendly answer.",
+        "height": 368,
+        "width": 720
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1248,
+        -576
+      ],
+      "typeVersion": 1,
+      "id": "0b7810f9-1a49-4a7a-a5fa-76ebd96c0e4a",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_MARKETING_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Marketing Campaign Performance Analysis",
+          "cachedResultUrl": "YOUR_MARKETING_GOOGLE_SHEET_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "YOUR_MARKETING_GOOGLE_SHEET_TAB_URL"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        736,
+        336
+      ],
+      "id": "962ab14a-1645-4173-888a-725dfd2eeb7d",
+      "name": "Marketing Campaign Performance Analysis",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "YOUR_GOOGLE_SHEETS_CREDENTIAL_NAME"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "E-commerce Orders & Customer Analysis": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Conversation": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marketing Campaign Performance Analysis": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "16d39c5c-635c-48cc-91e4-1826a965a173",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "id": "C7Tpvhlwa4jr8T18",
+  "tags": []
+}
