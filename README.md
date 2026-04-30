@@ -29,16 +29,6 @@ The workflow retrieves the relevant spreadsheet data, analyzes it, and returns a
 
 ## Workflow Overview
 
-```text
-When chat message received
-        ↓
-AI Agent
-        ↓
-Google Sheets Tool(s)
-        ↓
-Edit Fields
-        ↓
-Chat Response
 
 ---
 
