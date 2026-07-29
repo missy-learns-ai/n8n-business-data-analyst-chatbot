@@ -226,7 +226,7 @@ Recommended project structure:
 ```text
 n8n-business-data-analyst-chatbot/
 ├── README.md
-├── workflow.template.json
+├── business-data-analyst-chatbot.json
 ├── .gitignore
 ├── sample-data/
 │   ├── ecommerce-orders.csv
@@ -258,7 +258,7 @@ Or download the repository as a ZIP file from GitHub.
 1. Open n8n.
 2. Go to **Workflows**.
 3. Click **Import from File**.
-4. Select `workflow.template.json`.
+4. Select `business-data-analyst-chatbot.json`.
 5. Open the imported workflow.
 
 ---
@@ -644,7 +644,7 @@ Use this tool to retrieve customer support ticket data, including ticket ID, dat
 Before publishing your workflow to GitHub:
 
 - Export the workflow from n8n.
-- Rename it to `workflow.template.json`.
+- Rename it to `business-data-analyst-chatbot.json`.
 - Replace private values with placeholders.
 - Add sample datasets instead of private data.
 - Add screenshots that do not reveal sensitive information.
