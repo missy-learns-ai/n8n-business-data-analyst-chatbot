@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Analysis Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "intent",
+    "dataset",
+    "metrics",
+    "dimensions",
+    "filters",
+    "date_range",
+    "needs_clarification",
+    "clarification_question"
+  ],
+  "properties": {
+    "intent": {
+      "type": "string",
+      "enum": [
+        "summarize",
+        "compare",
+        "rank",
+        "filter",
+        "trend",
+        "distribution",
+        "diagnose"
+      ]
+    },
+    "dataset": {
+      "type": "string",
+      "enum": [
+        "ecommerce_orders",
+        "marketing_campaigns",
+        "unknown"
+      ]
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0
+    },
+    "filters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "operator", "value"],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string",
+            "enum": ["equals", "not_equals", "contains", "greater_than", "less_than", "between"]
+          },
+          "value": {}
+        }
+      }
+    },
+    "date_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end", "source"],
+      "properties": {
+        "start": {
+          "type": ["string", "null"],
+          "description": "ISO date in YYYY-MM-DD format, or null if no date range is requested."
+        },
+        "end": {
+          "type": ["string", "null"],
+          "description": "ISO date in YYYY-MM-DD format, or null if no date range is requested."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["explicit", "relative", "default_all_data", "none"]
+        }
+      }
+    },
+    "needs_clarification": {
+      "type": "boolean"
+    },
+    "clarification_question": {
+      "type": ["string", "null"]
+    }
+  }
+}
