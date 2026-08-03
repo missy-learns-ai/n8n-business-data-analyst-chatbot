@@ -79,6 +79,12 @@ n8n-business-data-analyst-chatbot/
 │   ├── architecture.md
 │   ├── database-setup.md
 │   └── assets/
+├── knowledge/
+│   ├── metric-dictionary.md
+│   ├── dataset-dictionary.md
+│   ├── policies/
+│   ├── playbooks/
+│   └── sample-reports/
 ├── prompts/
 │   └── orchestrator-planner.md
 ├── sample-data/
@@ -181,6 +187,18 @@ The workflow expects these Postgres tables:
 Keep database passwords and connection strings in Supabase and n8n credentials, not in repository files.
 
 See [docs/database-setup.md](docs/database-setup.md) and [database/schema.sql](database/schema.sql) for the table contract and setup SQL.
+
+---
+
+## Knowledge Corpus
+
+The repository includes a retrieval-ready knowledge corpus in [knowledge/](knowledge/). It defines the metric dictionary, dataset dictionary, grounding policies, analysis playbooks, and sample reports that can support a future RAG layer.
+
+The corpus is designed to complement deterministic analytics:
+
+- Postgres remains responsible for calculating numbers.
+- n8n remains responsible for routing, validation, logging, and workflow control.
+- Retrieved knowledge can support definitions, interpretation, policy checks, and recommendations.
 
 ---
 
