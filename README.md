@@ -73,11 +73,16 @@ See [docs/architecture.md](docs/architecture.md) for more implementation detail.
 ```text
 n8n-business-data-analyst-chatbot/
 ├── README.md
-├── business-data-analyst-chatbot.json
+├── database/
+│   └── schema.sql
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── database-setup.md
+│   └── assets/
 ├── prompts/
 │   └── orchestrator-planner.md
+├── sample-data/
+│   └── business-data-analyst-sample-datasets.zip
 ├── schemas/
 │   ├── analysis-plan.schema.json
 │   └── metric-registry.json
@@ -89,12 +94,17 @@ n8n-business-data-analyst-chatbot/
 │       ├── config.toml
 │       └── secrets.example.toml
 └── workflows/
-    └── business-data-analyst-chatbot.workflow.json
+    ├── business-data-analyst-chatbot.workflow.json
+    └── prototype-business-data-analyst-googlesheets.workflow.json
 ```
 
 The importable n8n workflow is available at:
 
 [workflows/business-data-analyst-chatbot.workflow.json](workflows/business-data-analyst-chatbot.workflow.json)
+
+The earlier Google Sheets proof-of-concept workflow is preserved as:
+
+[workflows/prototype-business-data-analyst-googlesheets.workflow.json](workflows/prototype-business-data-analyst-googlesheets.workflow.json)
 
 ---
 
@@ -169,6 +179,8 @@ The workflow expects these Postgres tables:
 | `planner_cache` | Optional cache for reusable structured plans |
 
 Keep database passwords and connection strings in Supabase and n8n credentials, not in repository files.
+
+See [docs/database-setup.md](docs/database-setup.md) and [database/schema.sql](database/schema.sql) for the table contract and setup SQL.
 
 ---
 
