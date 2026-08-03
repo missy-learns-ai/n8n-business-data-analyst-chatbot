@@ -100,27 +100,6 @@ See [docs/architecture.md](docs/architecture.md) for the architecture baseline.
 
 ---
 
-## Phase 1 Status
-
-| ID | Task | Status |
-|---|---|---|
-| P1-T01 | Repository baseline and architecture documentation | Done |
-| P1-T02 | Workflow responsibility separation | In Progress until final workflow JSON is exported |
-| P1-T03 | Structured planner schema | Done |
-| P1-T04 | Metric registry | Done |
-| P1-T05 | Deterministic calculation engine | Done |
-| P1-T06 | Date resolution | Done |
-| P1-T07 | Catalog and routing rules | Done |
-| P1-T08 | Data-quality validation | Done |
-| P1-T09 | Response composition | Done |
-| P1-T10 | Execution logging | Done |
-| P1-T11 | Regression test set | Done manually; repository artifact should be kept updated |
-| P1-T12 | Repository quality | In Progress |
-
-The remaining major repository task is exporting the completed Phase 1 n8n workflow JSON into `workflows/` once it is ready.
-
----
-
 ## Repository Structure
 
 ```text
