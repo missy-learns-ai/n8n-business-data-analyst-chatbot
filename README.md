@@ -1,13 +1,25 @@
-# n8n Business Data Analyst Chatbot
+# Agentic Business Intelligence Chatbot
 
-A business intelligence chatbot built with **n8n**, **Supabase Postgres**, and **Streamlit**. The project lets users ask natural-language questions about ecommerce and marketing performance. n8n handles the agentic workflow, Postgres performs deterministic calculations, and Streamlit provides a clean chat interface.
-Streamlit: https://data-analytics-bi-chatbot.streamlit.app/
+A production-inspired business intelligence chatbot built with n8n, Supabase Postgres, and Streamlit.
+
+The system lets users ask natural-language questions about ecommerce and marketing performance, then routes each question through a controlled analytics workflow instead of relying on the AI model to calculate answers directly.
+
+To reduce the black-box nature of AI, the language model is used only for planning and response composition. It classifies the user’s intent, selects the dataset, metric, dimension, filters, and date range, then returns a structured analysis plan. n8n validates that plan against approved business rules before any database query runs.
+
+All numerical answers are calculated deterministically in Supabase Postgres using approved metric definitions from a metric registry. The workflow also performs data-quality validation, handles unsupported or ambiguous questions with controlled responses, and logs each execution with trace ID, dataset, metrics, row count, date range, warnings, and status.
+
+To reduce latency and token cost, repeatable planning outputs are cached, business logic is moved out of prompts where possible, and the model is kept away from raw-row calculations. This makes the assistant more reliable, auditable, and closer to how AI analytics workflows need to behave in real business environments.
+
+Streamlit demo: https://data-analytics-bi-chatbot.streamlit.app/
+
 ```text
-The model plans and explains.
-Postgres calculates the numbers.
-n8n validates, routes, and logs the workflow.
-Streamlit gives the system a user-facing chat UI.
+Core design:
+- The model plans and explains.
+- Postgres calculates the numbers.
+- n8n validates, routes, caches, and logs the workflow.
+- Streamlit provides the user-facing chat interface.
 ```
+
 <img width="1390" height="611" alt="image" src="https://github.com/user-attachments/assets/7f3b2371-1967-4662-8c5e-98c1365df064" />
 
 ---
