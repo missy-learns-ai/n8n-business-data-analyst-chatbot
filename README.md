@@ -10,10 +10,13 @@ Postgres calculates the numbers.
 n8n validates, routes, and logs the workflow.
 Streamlit gives the system a user-facing chat UI.
 ```
+<img width="1390" height="611" alt="image" src="https://github.com/user-attachments/assets/7f3b2371-1967-4662-8c5e-98c1365df064" />
 
 ---
 
 ## What It Can Answer
+
+<img width="1439" height="858" alt="image" src="https://github.com/user-attachments/assets/850d020e-238c-411f-a619-52289d918ed8" />
 
 Example questions:
 
@@ -174,6 +177,7 @@ Keep database passwords and connection strings in Supabase and n8n credentials, 
 ## Streamlit UI
 
 The Streamlit app is the user-facing layer. It only calls the n8n webhook and does not connect directly to Supabase.
+<img width="1439" height="817" alt="image" src="https://github.com/user-attachments/assets/f1c49ba5-915d-481c-bec2-222d03a9871a" />
 
 Current UI features:
 
