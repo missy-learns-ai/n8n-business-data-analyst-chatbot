@@ -1,6 +1,6 @@
 # Streamlit UI
 
-This folder contains the Streamlit interface for the Phase 1 business analyst chatbot.
+This folder contains the Streamlit interface for the business analyst chatbot.
 
 Streamlit is the face of the project. n8n remains the analytics brain.
 
@@ -133,7 +133,7 @@ Controlled failures should also return a user-facing `response` field:
 ```json
 {
   "status": "unsupported",
-  "response": "I can help with ecommerce orders and marketing campaign analytics. This question looks outside the datasets currently available in Phase 1.",
+  "response": "I can help with ecommerce orders and marketing campaign analytics. This question looks outside the datasets currently available.",
   "warnings": ["Unsupported dataset or question type."]
 }
 ```
@@ -146,7 +146,7 @@ Use Streamlit Community Cloud:
 
 1. Open Streamlit Community Cloud.
 2. Create a new app from GitHub.
-3. Select this repository and the Phase 1 branch.
+3. Select this repository.
 4. Set the main file path to:
 
 ```text
@@ -166,7 +166,7 @@ Do not commit `.streamlit/secrets.toml`.
 
 ## Notes
 
-- Streamlit should not connect directly to Supabase in Phase 1.
+- Streamlit should not connect directly to Supabase.
 - Supabase credentials stay in n8n/Supabase configuration.
 - The n8n workflow should return final text that already includes source, row count, date range, and warnings.
 - Use the n8n production webhook only after the workflow is active.

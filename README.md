@@ -1,25 +1,26 @@
 # n8n Business Data Analyst Chatbot
 
-A portfolio-ready business intelligence chatbot built with **n8n**, **Supabase Postgres**, and **Streamlit**.
+A business intelligence chatbot built with **n8n**, **Supabase Postgres**, and **Streamlit**.
 
-The project started as a proof of concept where an AI Agent answered questions from a Google Sheet. Phase 1 refactors that prototype into a more reliable analytical system: the language model plans and explains, while Postgres performs the calculations and n8n enforces validation, routing, quality checks, and logging.
+The project lets users ask natural-language questions about ecommerce and marketing performance. n8n handles the agentic workflow, Postgres performs deterministic calculations, and Streamlit provides a clean chat interface.
 
 ```text
-The model plans and composes.
-Postgres calculates.
-n8n validates, routes, and logs.
-Streamlit gives the workflow a clean user interface.
+The model plans and explains.
+Postgres calculates the numbers.
+n8n validates, routes, and logs the workflow.
+Streamlit gives the system a user-facing chat UI.
 ```
 
 ---
 
-## What This Project Does
+## What It Can Answer
 
-Users can ask natural-language questions about ecommerce orders and marketing campaigns, such as:
+Example questions:
 
 ```text
 Which product category has the highest sales?
 Show net sales by sales channel.
+What are net sales for Electronics?
 Compare Electronics and Fashion by net sales.
 Which channel has the highest ROAS?
 Give me a breakdown of spend by channel last quarter.
@@ -32,29 +33,14 @@ The workflow returns concise business answers with:
 - selected dataset
 - record count
 - date range
-- warnings when data is unavailable or incomplete
+- warnings when data is missing or incomplete
 - execution logs in Supabase
 
 Unsupported or ambiguous questions fail cleanly before analytics SQL runs.
 
 ---
 
-## Phase 1 Objective
-
-**Reliable Analytical Foundation**
-
-Refactor the existing demo into a modular and trustworthy analytics workflow while keeping a single n8n orchestrator. The workflow separates planning, validation, retrieval, calculation, data-quality validation, response composition, and execution logging.
-
-Phase 1 is intentionally scoped to two datasets:
-
-| Dataset | Purpose |
-|---|---|
-| `ecommerce_orders` | Ecommerce sales, orders, products, channels, geography, delivery, ratings, and returns |
-| `marketing_campaigns` | Marketing spend, traffic, conversions, revenue, channels, devices, and campaign performance |
-
----
-
-## Current Architecture
+## Architecture
 
 ```text
 Streamlit UI
@@ -65,38 +51,19 @@ Streamlit UI
 -> Planner Cache
 -> Validate Analysis Plan
 -> Resolve Date Range
--> Route by Dataset or Controlled Failure
--> Fetch Metric Definition from Supabase
+-> Dataset Router
+-> Fetch Metric Definition
 -> Build Deterministic SQL
--> Execute Analytics Query in Postgres
--> Validate Analytics Result and Data Quality
+-> Execute Postgres Query
+-> Validate Analytics Result
 -> Response Composer
--> Normalize Log Payload
--> Write Execution Log
--> Return Webhook Response
+-> Execution Log
+-> Webhook Response
 ```
 
-The n8n workflow is currently designed as one orchestrator workflow with clearly separated responsibility zones. This keeps Phase 1 easier to inspect and debug. A later phase can split these zones into separate reusable sub-workflows if the canvas becomes too large.
+The workflow is intentionally structured as one n8n orchestrator with clear responsibility zones. This keeps the system easy to inspect while still separating planning, validation, calculation, data-quality checks, response generation, and logging.
 
-See [docs/architecture.md](docs/architecture.md) for the architecture baseline.
-
----
-
-## Responsibility Split
-
-| Component | Responsibility |
-|---|---|
-| Streamlit UI | Sends user questions to n8n and renders the final answer |
-| Planner Agent | Classifies intent and extracts a structured analysis plan |
-| Structured Output Parser | Enforces the required JSON shape from the planner |
-| Validate Analysis Plan | Canonicalizes metrics/dimensions, applies routing rules, and blocks unsafe plans |
-| Resolve Date Range | Converts relative periods such as last month and last quarter into explicit dates |
-| Metric Registry | Stores approved KPI formulas and business definitions in Supabase |
-| Build Analytics Query | Builds deterministic SQL from the validated plan and metric registry |
-| Postgres Query Node | Executes the approved SQL against Supabase Postgres |
-| Validate Analytics Result | Checks empty results, missing requested values, date coverage, and invalid metric output |
-| Response Composer | Converts verified JSON into a short business answer without recalculating values |
-| Execution Log | Stores traceability metadata for success and failure paths |
+See [docs/architecture.md](docs/architecture.md) for more implementation detail.
 
 ---
 
@@ -121,89 +88,22 @@ n8n-business-data-analyst-chatbot/
 │       ├── config.toml
 │       └── secrets.example.toml
 └── workflows/
-    └── phase-1 workflow export pending
+    └── business-data-analyst-chatbot.workflow.json
 ```
 
-Some workflow and evaluation artifacts may still be added as the final n8n export and regression files are prepared.
+The importable n8n workflow is available at:
+
+[workflows/business-data-analyst-chatbot.workflow.json](workflows/business-data-analyst-chatbot.workflow.json)
 
 ---
 
-## Streamlit UI
+## Supported Data Domains
 
-The Streamlit app is the user-facing layer. It does not connect directly to Supabase; it only calls the n8n webhook.
+### Ecommerce Orders
 
-Current UI features:
+Used for sales, orders, products, channels, geography, delivery, ratings, and returns.
 
-- light theme for portfolio screenshots
-- centered chat layout
-- interactive sample questions
-- clean processing state while n8n executes
-- no visible Streamlit framework chrome
-- no execution-details panel in the chat response
-- environment-based webhook configuration
-
-Run locally:
-
-```bash
-cd streamlit_app
-python -m pip install -r requirements.txt
-cp .streamlit/secrets.example.toml .streamlit/secrets.toml
-streamlit run streamlit_app.py
-```
-
-Configure secrets in `.streamlit/secrets.toml`:
-
-```toml
-N8N_WEBHOOK_URL = "https://YOUR_N8N_DOMAIN/webhook/business-analyst-chat"
-N8N_WEBHOOK_TOKEN = ""
-```
-
-For Streamlit-specific details, see [streamlit_app/README.md](streamlit_app/README.md).
-
----
-
-## Streamlit Community Cloud Deployment
-
-1. Push this repository to GitHub.
-2. Go to Streamlit Community Cloud.
-3. Create a new app from this repository.
-4. Select the Phase 1 branch.
-5. Set the app entrypoint to:
-
-```text
-streamlit_app/streamlit_app.py
-```
-
-6. Add these secrets in Streamlit Cloud:
-
-```toml
-N8N_WEBHOOK_URL = "https://YOUR_N8N_DOMAIN/webhook/business-analyst-chat"
-N8N_WEBHOOK_TOKEN = ""
-```
-
-Do not commit `.streamlit/secrets.toml`.
-
----
-
-## Supabase Tables
-
-Phase 1 uses Supabase Postgres as the analytical and logging layer.
-
-| Table | Purpose |
-|---|---|
-| `ecommerce_orders` | Ecommerce source dataset |
-| `marketing_campaigns` | Marketing source dataset |
-| `metric_registry` | Approved metric formulas and definitions |
-| `analytics_execution_log` | Trace log for success, warning, failure, clarification, unsupported, and invalid-plan paths |
-| `planner_cache` | Optional cache for unresolved structured plans |
-
-Private connection strings and credentials are managed in Supabase, n8n credentials, or Streamlit secrets. They should not be committed to this repository.
-
----
-
-## Phase 1 Metrics
-
-### Ecommerce
+Supported metrics:
 
 | Metric | Meaning |
 |---|---|
@@ -214,7 +114,13 @@ Private connection strings and credentials are managed in Supabase, n8n credenti
 | `average_rating` | Average order rating |
 | `average_delivery_days` | Average delivery duration |
 
-### Marketing
+Supported dimensions include product category, product name, sales channel, payment method, order status, region, country, city, gender, and age group.
+
+### Marketing Campaigns
+
+Used for campaign spend, traffic, conversions, revenue, channels, devices, audience segments, and campaign performance.
+
+Supported metrics:
 
 | Metric | Meaning |
 |---|---|
@@ -233,6 +139,89 @@ Private connection strings and credentials are managed in Supabase, n8n credenti
 | `revenue_per_click` | Revenue per click |
 | `lead_to_customer_rate` | Share of leads that became new customers |
 
+Supported dimensions include channel, region, country, audience segment, device, campaign objective, and campaign status.
+
+---
+
+## n8n Workflow Setup
+
+1. Import [workflows/business-data-analyst-chatbot.workflow.json](workflows/business-data-analyst-chatbot.workflow.json) into n8n.
+2. Reconnect the model credential on the planner and response-composer model nodes.
+3. Reconnect the Postgres credential on all Supabase/Postgres nodes.
+4. Confirm the webhook path and production webhook URL.
+5. Run test questions from the Streamlit app or n8n webhook.
+
+The workflow JSON does not include private credential values. You must reconnect your own n8n credentials after import.
+
+---
+
+## Supabase Tables
+
+The workflow expects these Postgres tables:
+
+| Table | Purpose |
+|---|---|
+| `ecommerce_orders` | Ecommerce source dataset |
+| `marketing_campaigns` | Marketing source dataset |
+| `metric_registry` | Approved KPI formulas and business definitions |
+| `analytics_execution_log` | Trace log for success and controlled-failure paths |
+| `planner_cache` | Optional cache for reusable structured plans |
+
+Keep database passwords and connection strings in Supabase and n8n credentials, not in repository files.
+
+---
+
+## Streamlit UI
+
+The Streamlit app is the user-facing layer. It only calls the n8n webhook and does not connect directly to Supabase.
+
+Current UI features:
+
+- light theme
+- centered chat layout
+- interactive sample questions
+- clean processing state while n8n executes
+- hidden Streamlit framework chrome
+- environment-based webhook configuration
+
+Run locally:
+
+```bash
+cd streamlit_app
+python -m pip install -r requirements.txt
+cp .streamlit/secrets.example.toml .streamlit/secrets.toml
+streamlit run streamlit_app.py
+```
+
+Configure `.streamlit/secrets.toml`:
+
+```toml
+N8N_WEBHOOK_URL = "https://YOUR_N8N_DOMAIN/webhook/business-analyst-chat"
+N8N_WEBHOOK_TOKEN = ""
+```
+
+For more detail, see [streamlit_app/README.md](streamlit_app/README.md).
+
+---
+
+## Streamlit Community Cloud Deployment
+
+1. Create a new app from this GitHub repository.
+2. Set the main file path to:
+
+```text
+streamlit_app/streamlit_app.py
+```
+
+3. Add secrets in Streamlit Cloud:
+
+```toml
+N8N_WEBHOOK_URL = "https://YOUR_N8N_DOMAIN/webhook/business-analyst-chat"
+N8N_WEBHOOK_TOKEN = ""
+```
+
+Do not commit `.streamlit/secrets.toml`.
+
 ---
 
 ## Response Contract
@@ -244,7 +233,7 @@ Example:
 ```json
 {
   "status": "success",
-  "response": "The channel with the highest ROAS is TikTok, with a ROAS of 6.67.\nSource: marketing_campaigns · 1005 records · 2025-01-01 to 2026-06-30",
+  "response": "The channel with the highest ROAS is TikTok, with a ROAS of 6.67.\nSource: marketing_campaigns | 1005 records | 2025-01-01 to 2026-06-30",
   "dataset": "marketing_campaigns",
   "metrics": ["roas"],
   "analysis_type": "grouped_metric_ranking",
@@ -255,7 +244,7 @@ Example:
 }
 ```
 
-Controlled failures should still return a `response` field so the UI can display a clean answer.
+Controlled failures should still return a `response` field so the UI can display a clear answer.
 
 ---
 
@@ -275,20 +264,6 @@ Do not commit:
 - customer, employee, or confidential company data
 
 Use placeholders in documentation and keep real values in n8n credentials, Supabase settings, Streamlit secrets, or environment variables.
-
----
-
-## Phase 1 Acceptance Criteria
-
-Phase 1 is complete when:
-
-- the workflow selects the correct dataset for at least 90% of Phase 1 test questions
-- all numerical answers match trusted SQL calculations
-- no analytical answer is returned when required data is unavailable
-- every answer includes source dataset, record count, date period, and warnings where relevant
-- workflow JSON files contain no secrets or private credential values
-- execution logging works across success and controlled-failure paths
-- setup, architecture, workflow responsibilities, and limitations are documented
 
 ---
 
