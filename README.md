@@ -1,9 +1,7 @@
 # n8n Business Data Analyst Chatbot
 
-A business intelligence chatbot built with **n8n**, **Supabase Postgres**, and **Streamlit**.
-
-The project lets users ask natural-language questions about ecommerce and marketing performance. n8n handles the agentic workflow, Postgres performs deterministic calculations, and Streamlit provides a clean chat interface.
-
+A business intelligence chatbot built with **n8n**, **Supabase Postgres**, and **Streamlit**. The project lets users ask natural-language questions about ecommerce and marketing performance. n8n handles the agentic workflow, Postgres performs deterministic calculations, and Streamlit provides a clean chat interface.
+Streamlit: https://data-analytics-bi-chatbot.streamlit.app/
 ```text
 The model plans and explains.
 Postgres calculates the numbers.
