@@ -1,105 +1,167 @@
 # n8n Business Data Analyst Chatbot
 
-A chat-based business intelligence workflow built with **n8n**, **Supabase Postgres**, and a lightweight **Streamlit** user interface.
+A portfolio-ready business intelligence chatbot built with **n8n**, **Supabase Postgres**, and **Streamlit**.
 
-The original proof of concept connected an AI Agent directly to Google Sheets tools. Phase 1 is refactoring that prototype into a more reliable analytical foundation backed by structured planning, deterministic SQL calculations, validation, execution logging, and a separate UI layer.
-
-> Phase 1 workflow export is still in progress. The current repository documents the target architecture and contracts; the finished n8n workflow export will be added once it is ready.
-
----
-
-## Phase 1 Goal
-
-Phase 1 turns the project from a demo chatbot into a trustworthy analytical workflow.
-
-The core design rule is:
+The project started as a proof of concept where an AI Agent answered questions from a Google Sheet. Phase 1 refactors that prototype into a more reliable analytical system: the language model plans and explains, while Postgres performs the calculations and n8n enforces validation, routing, quality checks, and logging.
 
 ```text
-The language model plans and explains.
-Supabase SQL calculates.
-Workflow nodes validate and enforce the process.
+The model plans and composes.
+Postgres calculates.
+n8n validates, routes, and logs.
+Streamlit gives the workflow a clean user interface.
 ```
-
-This matters because real business analytics should not rely on a language model to calculate numbers from raw rows. The model should interpret the user request and produce a structured plan. The workflow should validate that plan. The database should calculate the result. The response composer should explain only verified results.
 
 ---
 
-## Application Layers
+## What This Project Does
+
+Users can ask natural-language questions about ecommerce orders and marketing campaigns, such as:
+
+```text
+Which product category has the highest sales?
+Show net sales by sales channel.
+Compare Electronics and Fashion by net sales.
+Which channel has the highest ROAS?
+Give me a breakdown of spend by channel last quarter.
+Compare Instagram and TikTok by ROAS.
+```
+
+The workflow returns concise business answers with:
+
+- verified metric values
+- selected dataset
+- record count
+- date range
+- warnings when data is unavailable or incomplete
+- execution logs in Supabase
+
+Unsupported or ambiguous questions fail cleanly before analytics SQL runs.
+
+---
+
+## Phase 1 Objective
+
+**Reliable Analytical Foundation**
+
+Refactor the existing demo into a modular and trustworthy analytics workflow while keeping a single n8n orchestrator. The workflow separates planning, validation, retrieval, calculation, data-quality validation, response composition, and execution logging.
+
+Phase 1 is intentionally scoped to two datasets:
+
+| Dataset | Purpose |
+|---|---|
+| `ecommerce_orders` | Ecommerce sales, orders, products, channels, geography, delivery, ratings, and returns |
+| `marketing_campaigns` | Marketing spend, traffic, conversions, revenue, channels, devices, and campaign performance |
+
+---
+
+## Current Architecture
 
 ```text
 Streamlit UI
--> n8n Webhook / Orchestrator Workflow
--> Supabase Postgres
--> n8n JSON response
--> Streamlit chat response
+-> n8n Webhook
+-> Prepare Input
+-> Business Catalog
+-> Planner Agent
+-> Planner Cache
+-> Validate Analysis Plan
+-> Resolve Date Range
+-> Route by Dataset or Controlled Failure
+-> Fetch Metric Definition from Supabase
+-> Build Deterministic SQL
+-> Execute Analytics Query in Postgres
+-> Validate Analytics Result and Data Quality
+-> Response Composer
+-> Normalize Log Payload
+-> Write Execution Log
+-> Return Webhook Response
 ```
 
-| Layer | Responsibility |
-|---|---|
-| Streamlit | User-facing chat UI. Sends user messages to n8n and renders the response. |
-| n8n | Brain of the workflow: planning, validation, analytics routing, SQL execution, response generation and logging. |
-| Supabase Postgres | Structured analytical data store and execution log store. |
-| Model provider | Planner and response-composer language model calls inside n8n. |
+The n8n workflow is currently designed as one orchestrator workflow with clearly separated responsibility zones. This keeps Phase 1 easier to inspect and debug. A later phase can split these zones into separate reusable sub-workflows if the canvas becomes too large.
 
-The Streamlit UI does not connect directly to Supabase. It only calls the n8n webhook.
+See [docs/architecture.md](docs/architecture.md) for the architecture baseline.
 
 ---
 
-## Current Status
+## Responsibility Split
 
-| Area | Status |
+| Component | Responsibility |
 |---|---|
-| Original prototype workflow | Present as `business-data-analyst-chatbot.json` |
-| Phase 1 architecture documentation | In progress in `docs/architecture.md` |
-| Planner prompt | Started in `prompts/orchestrator-planner.md` |
-| Analysis-plan schema | Started in `schemas/analysis-plan.schema.json` |
-| Metric registry contract | Started in `schemas/metric-registry.json` |
-| Streamlit UI | Added in `streamlit_app/` |
-| Supabase Postgres setup | Maintained outside the repo in Supabase/n8n credentials |
-| Phase 1 workflow export | Pending upload when ready |
-| Regression test set | Not started |
+| Streamlit UI | Sends user questions to n8n and renders the final answer |
+| Planner Agent | Classifies intent and extracts a structured analysis plan |
+| Structured Output Parser | Enforces the required JSON shape from the planner |
+| Validate Analysis Plan | Canonicalizes metrics/dimensions, applies routing rules, and blocks unsafe plans |
+| Resolve Date Range | Converts relative periods such as last month and last quarter into explicit dates |
+| Metric Registry | Stores approved KPI formulas and business definitions in Supabase |
+| Build Analytics Query | Builds deterministic SQL from the validated plan and metric registry |
+| Postgres Query Node | Executes the approved SQL against Supabase Postgres |
+| Validate Analytics Result | Checks empty results, missing requested values, date coverage, and invalid metric output |
+| Response Composer | Converts verified JSON into a short business answer without recalculating values |
+| Execution Log | Stores traceability metadata for success and failure paths |
 
 ---
 
-## Target Phase 1 Workflow
+## Phase 1 Status
+
+| ID | Task | Status |
+|---|---|---|
+| P1-T01 | Repository baseline and architecture documentation | Done |
+| P1-T02 | Workflow responsibility separation | In Progress until final workflow JSON is exported |
+| P1-T03 | Structured planner schema | Done |
+| P1-T04 | Metric registry | Done |
+| P1-T05 | Deterministic calculation engine | Done |
+| P1-T06 | Date resolution | Done |
+| P1-T07 | Catalog and routing rules | Done |
+| P1-T08 | Data-quality validation | Done |
+| P1-T09 | Response composition | Done |
+| P1-T10 | Execution logging | Done |
+| P1-T11 | Regression test set | Done manually; repository artifact should be kept updated |
+| P1-T12 | Repository quality | In Progress |
+
+The remaining major repository task is exporting the completed Phase 1 n8n workflow JSON into `workflows/` once it is ready.
+
+---
+
+## Repository Structure
 
 ```text
-Chat Trigger or Webhook Trigger
--> Prepare Input
--> Add Business Catalog
--> Planner Agent
--> Validate Analysis Plan
--> Main Switch
-   -> ecommerce_orders analytics branch
-   -> marketing_campaigns analytics branch
-   -> clarification branch
-   -> unsupported branch
-   -> invalid_plan branch
--> Build Analytics Query / Controlled Response
--> Supabase Postgres deterministic query
--> Validate Analytics Result
--> Response Composer
--> Execution Log
--> Chat or Webhook Response
+n8n-business-data-analyst-chatbot/
+├── README.md
+├── business-data-analyst-chatbot.json
+├── docs/
+│   └── architecture.md
+├── prompts/
+│   └── orchestrator-planner.md
+├── schemas/
+│   ├── analysis-plan.schema.json
+│   └── metric-registry.json
+├── streamlit_app/
+│   ├── streamlit_app.py
+│   ├── requirements.txt
+│   ├── README.md
+│   └── .streamlit/
+│       ├── config.toml
+│       └── secrets.example.toml
+└── workflows/
+    └── phase-1 workflow export pending
 ```
 
-The workflow is intentionally kept as one orchestrator workflow during active Phase 1 development. The architecture separates responsibilities inside the workflow. If the canvas becomes difficult to maintain later, the branches can be split into importable sub-workflows.
-
-See [docs/architecture.md](docs/architecture.md) for the detailed architecture baseline.
+Some workflow and evaluation artifacts may still be added as the final n8n export and regression files are prepared.
 
 ---
 
 ## Streamlit UI
 
-The Streamlit app lives in:
+The Streamlit app is the user-facing layer. It does not connect directly to Supabase; it only calls the n8n webhook.
 
-```text
-streamlit_app/
-├── streamlit_app.py
-├── requirements.txt
-└── .streamlit/
-    └── secrets.example.toml
-```
+Current UI features:
+
+- light theme for portfolio screenshots
+- centered chat layout
+- interactive sample questions
+- clean processing state while n8n executes
+- no visible Streamlit framework chrome
+- no execution-details panel in the chat response
+- environment-based webhook configuration
 
 Run locally:
 
@@ -110,133 +172,130 @@ cp .streamlit/secrets.example.toml .streamlit/secrets.toml
 streamlit run streamlit_app.py
 ```
 
-Set this secret locally or in Streamlit Community Cloud:
+Configure secrets in `.streamlit/secrets.toml`:
 
 ```toml
 N8N_WEBHOOK_URL = "https://YOUR_N8N_DOMAIN/webhook/business-analyst-chat"
 N8N_WEBHOOK_TOKEN = ""
 ```
 
-For more details, see [streamlit_app/README.md](streamlit_app/README.md).
+For Streamlit-specific details, see [streamlit_app/README.md](streamlit_app/README.md).
 
 ---
 
-## Supported Phase 1 Data Domains
+## Streamlit Community Cloud Deployment
 
-### Ecommerce Orders
-
-Used for questions about:
-
-- product categories
-- products
-- sales channels
-- payment methods
-- regions and countries
-- order status and returns
-- delivery days
-- ratings
-- gross sales, net sales, estimated profit and return rate
-
-Example questions:
+1. Push this repository to GitHub.
+2. Go to Streamlit Community Cloud.
+3. Create a new app from this repository.
+4. Select the Phase 1 branch.
+5. Set the app entrypoint to:
 
 ```text
-Which product category has the highest sales?
-Give me a breakdown of sales by product category.
-How are PayPal orders distributed by gender?
-Which region has the highest return rate?
+streamlit_app/streamlit_app.py
 ```
 
-### Marketing Campaigns
+6. Add these secrets in Streamlit Cloud:
 
-Used for questions about:
-
-- campaign channels
-- devices
-- audience segments
-- regions and countries
-- spend
-- impressions
-- clicks
-- conversions
-- revenue
-- ROAS, CTR, conversion rate and cost per conversion
-
-Example questions:
-
-```text
-Which marketing channel has the highest ROAS?
-Give me a breakdown of revenue by device.
-Are mobile campaigns performing better than desktop campaigns?
-Which campaigns have high spend but poor returns?
+```toml
+N8N_WEBHOOK_URL = "https://YOUR_N8N_DOMAIN/webhook/business-analyst-chat"
+N8N_WEBHOOK_TOKEN = ""
 ```
+
+Do not commit `.streamlit/secrets.toml`.
 
 ---
 
-## Phase 1 Repository Structure
+## Supabase Tables
 
-Target structure as the Phase 1 implementation matures:
+Phase 1 uses Supabase Postgres as the analytical and logging layer.
 
-```text
-n8n-business-data-analyst-chatbot/
-├── README.md
-├── business-data-analyst-chatbot.json
-├── .gitignore
-├── docs/
-│   ├── architecture.md
-│   ├── evaluation.md
-│   └── operating-guide.md
-├── workflows/
-│   └── 01-reliable-analytics-foundation.json
-├── prompts/
-│   ├── orchestrator-planner.md
-│   └── response-composer.md
-├── schemas/
-│   ├── analysis-plan.schema.json
-│   ├── dataset-dictionary.json
-│   ├── metric-registry.json
-│   ├── analytics-result.schema.json
-│   └── warnings.schema.json
-├── evaluations/
-│   └── phase1-golden-questions.csv
-├── streamlit_app/
-│   ├── streamlit_app.py
-│   ├── requirements.txt
-│   └── README.md
-└── sample-data/
-```
+| Table | Purpose |
+|---|---|
+| `ecommerce_orders` | Ecommerce source dataset |
+| `marketing_campaigns` | Marketing source dataset |
+| `metric_registry` | Approved metric formulas and definitions |
+| `analytics_execution_log` | Trace log for success, warning, failure, clarification, unsupported, and invalid-plan paths |
+| `planner_cache` | Optional cache for unresolved structured plans |
 
-Not every target file exists yet. Missing files are expected while Phase 1 is in progress.
+Private connection strings and credentials are managed in Supabase, n8n credentials, or Streamlit secrets. They should not be committed to this repository.
 
 ---
 
-## Important Security Notes
+## Phase 1 Metrics
 
-Do not commit secrets or private environment identifiers.
+### Ecommerce
 
-Never commit:
+| Metric | Meaning |
+|---|---|
+| `order_count` | Total ecommerce orders |
+| `gross_sales` | Sales before discounts |
+| `net_sales` | Sales after discounts |
+| `return_rate` | Share of orders with returned status |
+| `average_rating` | Average order rating |
+| `average_delivery_days` | Average delivery duration |
 
-- OpenAI, Groq or other model-provider API keys
+### Marketing
+
+| Metric | Meaning |
+|---|---|
+| `spend` | Total campaign spend |
+| `impressions` | Total impressions |
+| `clicks` | Total clicks |
+| `conversions` | Total conversions |
+| `revenue` | Total attributed revenue |
+| `leads` | Total leads |
+| `new_customers` | Total new customers |
+| `ctr` | Click-through rate |
+| `conversion_rate` | Share of clicks that became conversions |
+| `cost_per_click` | Spend per click |
+| `cost_per_conversion` | Spend per conversion |
+| `roas` | Revenue per dollar of spend |
+| `revenue_per_click` | Revenue per click |
+| `lead_to_customer_rate` | Share of leads that became new customers |
+
+---
+
+## Response Contract
+
+The Streamlit app expects n8n to return JSON with a user-facing `response` field.
+
+Example:
+
+```json
+{
+  "status": "success",
+  "response": "The channel with the highest ROAS is TikTok, with a ROAS of 6.67.\nSource: marketing_campaigns · 1005 records · 2025-01-01 to 2026-06-30",
+  "dataset": "marketing_campaigns",
+  "metrics": ["roas"],
+  "analysis_type": "grouped_metric_ranking",
+  "row_count": 1005,
+  "date_start": "2025-01-01",
+  "date_end": "2026-06-30",
+  "warnings": []
+}
+```
+
+Controlled failures should still return a `response` field so the UI can display a clean answer.
+
+---
+
+## Security Notes
+
+Never commit secrets or private environment identifiers.
+
+Do not commit:
+
+- model-provider API keys
 - Supabase database passwords
 - raw Supabase connection strings
-- n8n credential IDs from a private instance
-- production webhook URLs if they are private
+- n8n credential IDs
+- private webhook URLs
 - OAuth access tokens or refresh tokens
-- private Google Sheet URLs or private document IDs
-- customer, employee or confidential company data
+- private Google Sheet, Google Doc, or Supabase project URLs
+- customer, employee, or confidential company data
 
-Use n8n credentials, Supabase settings, Streamlit secrets or environment variables for private values.
-
-Safe placeholder examples:
-
-```text
-SUPABASE_HOST=YOUR_SUPABASE_HOST
-SUPABASE_PORT=5432
-SUPABASE_DATABASE=postgres
-SUPABASE_USER=YOUR_SUPABASE_USER
-SUPABASE_PASSWORD=YOUR_SUPABASE_PASSWORD
-N8N_WEBHOOK_URL=YOUR_N8N_WEBHOOK_URL
-N8N_WEBHOOK_TOKEN=YOUR_OPTIONAL_TOKEN
-```
+Use placeholders in documentation and keep real values in n8n credentials, Supabase settings, Streamlit secrets, or environment variables.
 
 ---
 
@@ -244,49 +303,18 @@ N8N_WEBHOOK_TOKEN=YOUR_OPTIONAL_TOKEN
 
 Phase 1 is complete when:
 
-- the planner selects the correct dataset for at least 90% of Phase 1 test questions
-- all numerical answers match trusted reference SQL calculations
-- the workflow does not return an analytical answer when required data is unavailable
-- every successful answer includes dataset name, record count, date period and warnings where relevant
-- workflow JSON files and repository files contain no secrets or private credential values
-- test questions are documented and repeatable
-- repository documentation explains setup, architecture and limitations
-
----
-
-## Original Prototype
-
-The original workflow is still useful as a learning baseline. It demonstrates the basic conversational analytics experience:
-
-```text
-Start Conversation
--> AI Agent
--> Google Sheets Tool(s)
--> Edit Fields
--> Chat Response
-```
-
-Its main limitation is that the AI Agent handles planning, routing, retrieval, calculation and response generation all at once. Phase 1 separates those responsibilities so the project can become more testable and reliable.
-
----
-
-## License
-
-Add your preferred license here.
-
-Common options:
-
-- MIT License
-- Apache License 2.0
-- GPLv3
-- No license / All rights reserved
+- the workflow selects the correct dataset for at least 90% of Phase 1 test questions
+- all numerical answers match trusted SQL calculations
+- no analytical answer is returned when required data is unavailable
+- every answer includes source dataset, record count, date period, and warnings where relevant
+- workflow JSON files contain no secrets or private credential values
+- execution logging works across success and controlled-failure paths
+- setup, architecture, workflow responsibilities, and limitations are documented
 
 ---
 
 ## Disclaimer
 
-This workflow is provided as a learning and demonstration template.
+This project is a learning and portfolio implementation of an agentic analytics workflow.
 
-You are responsible for configuring your own n8n credentials, model-provider credentials, Supabase access, data permissions and security settings.
-
-Do not use this workflow with sensitive, confidential, regulated or personally identifiable data unless your n8n instance, model provider, database and data-handling process meet your organization’s security and compliance requirements.
+Do not use it with sensitive, regulated, or confidential data unless your n8n instance, model provider, database, hosting environment, and data-handling process meet your security and compliance requirements.
