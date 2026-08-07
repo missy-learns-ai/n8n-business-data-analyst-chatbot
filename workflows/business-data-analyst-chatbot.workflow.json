@@ -1,35 +1,21 @@
 {
-  "name": "business-data-analyst-chatbot",
+  "name": "Business Data Analyst Chatbot",
   "nodes": [
     {
       "parameters": {
-        "content": "## Workflow Overview\n\nAI planning:\n1. Planner Agent creates a structured analysis plan.\n\nDeterministic controls:\n2. Validate Analysis Plan checks and canonicalizes the plan.\n3. Resolve Date Range converts relative periods into explicit dates.\n4. Analytics query builders create safe SQL from approved templates.\n5. Postgres executes deterministic calculations.\n6. Validate Analytics Result checks data quality and answer safety.\n7. Execution Log records success and failure paths.\n\nAI response:\n8. Response Composer explains verified results without recalculating.",
-        "height": 288,
-        "width": 512
+        "content": "## Workflow Overview\n\nRequest protection:\n1. Request Guard validates the incoming request before AI or database work runs.\n\nAI planning:\n2. Planner Agent creates a structured analysis plan.\n3. Planner Cache can reuse a previously validated unresolved plan for repeated questions.\n\nDeterministic controls:\n4. Validate Analysis Plan checks, canonicalizes, and blocks invalid plans.\n5. Resolve Date Range converts relative periods into explicit dates.\n6. Metadata Authorization Guard confirms the dataset, table, dimensions, filters, and date column are approved.\n7. Metric Registry provides the trusted KPI formula and business definition.\n8. Build Analytics Query creates deterministic SQL from approved metadata and metric definitions.\n9. SQL Safety Guard blocks unsafe or unauthorized SQL before execution.\n10. Postgres executes the approved read-only calculation.\n11. Validate Analytics Result checks data quality, missing values, empty results, and warnings.\n12. Execution Log records success and controlled-failure paths.\n\nAI response:\n13. Response Composer explains verified results without recalculating.\n14. Response Safety Guard checks the final answer before it is returned to the user.",
+        "height": 640,
+        "width": 704,
+        "color": 5
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -1056,
-        -880
+        -1216,
+        -1376
       ],
       "typeVersion": 1,
-      "id": "92a0d2d3-543f-479d-942f-21adc600f164",
+      "id": "78b6a519-9943-48d7-8d73-f267fbce6baf",
       "name": "Sticky Note8"
-    },
-    {
-      "parameters": {
-        "content": "## Responsibility Split\n\nPlanner Agent:\nClassifies intent, dataset, metric, dimension, filters and clarification need.\n\nValidator Code:\nNormalizes aliases, corrects safe dataset mismatches and blocks invalid plans.\n\nMetric Registry:\nStores trusted KPI formulas used by query builders.\n\nAnalytics Query Builders:\nCreate SQL from safe templates and approved fields.\n\nData Quality Validator:\nChecks whether results are complete enough to answer.\n\nResponse Composer:\nTurns verified JSON into concise business language.",
-        "height": 352,
-        "width": 512
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        -1056,
-        -576
-      ],
-      "typeVersion": 1,
-      "id": "6c437dd9-1ef1-4cf9-9402-a58573a9aff9",
-      "name": "Sticky Note10"
     },
     {
       "parameters": {
@@ -38,7 +24,7 @@
             {
               "id": "ea7a8822-fe3c-4990-b063-2091f92f2021",
               "name": "=user_question",
-              "value": "={{ $json.body.message.trim() }}",
+              "value": "={{ $json.user_question }}",
               "type": "string"
             },
             {
@@ -66,23 +52,23 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -1056,
-        1248
+        -608,
+        624
       ],
-      "id": "5287217e-3e4b-4ee5-b0b8-91a3e51cb3da",
+      "id": "d36d88cd-91b8-490f-a948-0ce57a1fe535",
       "name": "Prepare Input"
     },
     {
       "parameters": {
-        "jsCode": "const plan = $json.output || $json;\nconst errors = [];\n\nlet prepareInput = {};\n\ntry {\n  prepareInput = $(\"Prepare Input\").first().json;\n} catch (error) {\n  prepareInput = {};\n}\n\nconst traceId = $json.trace_id || prepareInput.trace_id || $execution.id;\nconst userQuestion = $json.user_question || prepareInput.user_question || \"\";\nconst sessionId = $json.session_id || prepareInput.session_id || null;\nconst sourceChannel = $json.source_channel || prepareInput.source_channel || null;\n\n// Normalize required array fields so downstream validation can safely iterate.\nif (!Array.isArray(plan.metrics)) {\n  plan.metrics = [];\n}\n\nif (!Array.isArray(plan.dimensions)) {\n  plan.dimensions = [];\n}\n\nif (!Array.isArray(plan.filters)) {\n  plan.filters = [];\n}\n\n// Ensure the date object always has the fields Phase 1 expects.\nif (!plan.date_range || typeof plan.date_range !== \"object\") {\n  plan.date_range = {\n    start: null,\n    end: null,\n    date_column: null,\n    relative_period: null\n  };\n}\n\nif (!Object.prototype.hasOwnProperty.call(plan.date_range, \"relative_period\")) {\n  plan.date_range.relative_period = null;\n}\n\nconst normalizeKey = (value) => {\n  if (typeof value !== \"string\") return value;\n  return value.trim().toLowerCase().replace(/\\s+/g, \"_\");\n};\n\n// Convert model vocabulary into canonical key format before alias lookup.\n// Example: \"ROAS\" -> \"roas\", \"Return On Ad Spend\" -> \"return_on_ad_spend\".\nplan.route = normalizeKey(plan.route);\nplan.dataset = normalizeKey(plan.dataset);\nplan.analysis_type = normalizeKey(plan.analysis_type);\nplan.intent = normalizeKey(plan.intent);\n\nplan.metrics = plan.metrics.map(normalizeKey);\nplan.dimensions = plan.dimensions.map(normalizeKey);\n\nplan.filters = plan.filters.map(filter => ({\n  ...filter,\n  field: normalizeKey(filter.field),\n  operator: normalizeKey(filter.operator)\n}));\n\nif (plan.date_range.date_column) {\n  plan.date_range.date_column = normalizeKey(plan.date_range.date_column);\n}\n\nif (plan.date_range.relative_period) {\n  plan.date_range.relative_period = normalizeKey(plan.date_range.relative_period);\n}\n\n// Use the business catalog when available. If the Planner Agent output dropped it,\n// read it from the Add Business Catalog node.\nlet catalog = $json.business_catalog || {};\n\nif (!catalog.datasets) {\n  try {\n    catalog = $(\"Add Business Catalog\").first().json.business_catalog || {};\n  } catch (error) {\n    catalog = {};\n  }\n}\n\n// Some questions are clearly outside the Phase 1 datasets.\n// These should be unsupported, not clarification.\nconst questionText = String($json.user_question || \"\").toLowerCase();\n\nconst unsupportedTerms = [\n  \"employee\",\n  \"employees\",\n  \"salary\",\n  \"salaries\",\n  \"payroll\",\n  \"hr\",\n  \"human resources\",\n  \"inventory\",\n  \"stock level\",\n  \"stock levels\",\n  \"support ticket\",\n  \"support tickets\",\n  \"weather\",\n  \"stock price\",\n  \"stock prices\"\n];\n\nconst isClearlyUnsupported = unsupportedTerms.some(term => {\n  return questionText.includes(term);\n});\n\n// Unsupported must be handled before clarification because unsupported plans\n// intentionally use dataset = \"unknown\" and analysis_type = \"unknown\".\nif (\n  isClearlyUnsupported ||\n  plan.route === \"unsupported\" ||\n  plan.dataset === \"unsupported\" ||\n  plan.intent === \"unsupported\" ||\n  plan.analysis_type === \"unsupported\"\n) {\n  return [{\n  json: {\n    trace_id: traceId,\n    user_question: userQuestion,\n    session_id: sessionId,\n    source_channel: sourceChannel,\n    plan_valid: false,\n    route: \"unsupported\",\n    errors: [\"Unsupported dataset or question type.\"],\n    plan: {\n      ...plan,\n      route: \"unsupported\",\n      intent: \"unsupported\",\n      dataset: \"unknown\",\n      analysis_type: \"unknown\",\n      metrics: [],\n      dimensions: [],\n      filters: [],\n      date_range: {\n        start: null,\n        end: null,\n        date_column: \"unknown\",\n        relative_period: null\n      },\n      limit: 0,\n      needs_clarification: false,\n      clarification_question: null\n    }\n  }\n}];\n}\n\nconst datasets = catalog.datasets || {};\nconst datasetCatalog = datasets[plan.dataset] || {};\nconst fieldAliases = datasetCatalog.field_aliases || {};\nconst metricAliases = datasetCatalog.metric_aliases || {};\n\n// Fallback aliases protect the workflow if the catalog is missing from the item\n// or the Planner uses common business vocabulary instead of canonical keys.\nconst fallbackMetricAliases = {\n  ecommerce_orders: {\n    sales: \"net_sales\",\n    total_sales: \"net_sales\",\n    revenue: \"net_sales\",\n    net_revenue: \"net_sales\",\n    gross_revenue: \"gross_sales\",\n    orders: \"order_count\",\n    order_volume: \"order_count\",\n    number_of_orders: \"order_count\",\n    returns: \"return_rate\",\n    returned_orders: \"return_rate\",\n    rating: \"average_rating\",\n    customer_rating: \"average_rating\",\n    delivery_time: \"average_delivery_days\",\n    shipping_time: \"average_delivery_days\"\n  },\n  marketing_campaigns: {\n    return_on_ad_spend: \"roas\",\n    return_on_ads_spend: \"roas\",\n    roas: \"roas\",\n    click_through_rate: \"ctr\",\n    c_t_r: \"ctr\",\n    cvr: \"conversion_rate\",\n    conversion_percentage: \"conversion_rate\",\n    conversion_percent: \"conversion_rate\",\n    conversions_rate: \"conversion_rate\",\n    cpc: \"cost_per_click\",\n    cpa: \"cost_per_conversion\",\n    cost_per_acquisition: \"cost_per_conversion\",\n    rpc: \"revenue_per_click\",\n    lead_customer_rate: \"lead_to_customer_rate\"\n  }\n};\n\nconst fallbackDimensionAliases = {\n  marketing_campaigns: {\n    platform: \"channel\",\n    ad_platform: \"channel\",\n    marketing_platform: \"channel\",\n    social_platform: \"channel\",\n    marketing_channel: \"channel\",\n    campaign_channel: \"channel\",\n    traffic_channel: \"channel\",\n    traffic_source: \"channel\",\n    ad_channel: \"channel\",\n    source: \"channel\",\n    placement: \"channel\",\n    audience: \"audience_segment\",\n    segment: \"audience_segment\",\n    objective: \"campaign_objective\",\n    status: \"campaign_status\"\n  },\n  ecommerce_orders: {\n    category: \"product_category\",\n    product_category_name: \"product_category\",\n    product_type: \"product_category\",\n    item_category: \"product_category\",\n    product: \"product_name\",\n    item: \"product_name\",\n    channel: \"sales_channel\",\n    order_channel: \"sales_channel\",\n    purchase_channel: \"sales_channel\",\n    platform: \"sales_channel\",\n    payment: \"payment_method\",\n    status: \"order_status\",\n    location: \"region\",\n    market: \"region\",\n    geography: \"region\"\n  }\n};\n\nconst fallbackMetricAliasMap = fallbackMetricAliases[plan.dataset] || {};\nconst fallbackDimensionAliasMap = fallbackDimensionAliases[plan.dataset] || {};\n\n// Canonicalize metrics and dimensions before validation.\n// Example: \"return_on_ad_spend\" -> \"roas\", \"ad_platform\" -> \"channel\".\nplan.metrics = plan.metrics.map(metric => {\n  return metricAliases[metric] || fallbackMetricAliasMap[metric] || metric;\n});\n\nplan.dimensions = plan.dimensions.map(dimension => {\n  return fieldAliases[dimension] || fallbackDimensionAliasMap[dimension] || dimension;\n});\n\nplan.filters = plan.filters.map(filter => ({\n  ...filter,\n  field: fieldAliases[filter.field] || fallbackDimensionAliasMap[filter.field] || filter.field\n}));\n\n// Phase 1 allowlist. Query builders only receive plans that pass this contract.\nconst allowed = {\n  ecommerce_orders: {\n    metrics: [\n      \"order_count\",\n      \"gross_sales\",\n      \"net_sales\",\n      \"return_rate\",\n      \"average_rating\",\n      \"average_delivery_days\"\n    ],\n    dimensions: [\n      \"gender\",\n      \"region\",\n      \"country\",\n      \"city\",\n      \"product_category\",\n      \"product_name\",\n      \"sales_channel\",\n      \"payment_method\",\n      \"order_status\",\n      \"age_group\"\n    ],\n    date_column: \"order_date\"\n  },\n  marketing_campaigns: {\n    metrics: [\n      \"spend\",\n      \"impressions\",\n      \"clicks\",\n      \"conversions\",\n      \"revenue\",\n      \"leads\",\n      \"new_customers\",\n      \"ctr\",\n      \"conversion_rate\",\n      \"cost_per_click\",\n      \"cost_per_conversion\",\n      \"roas\",\n      \"revenue_per_click\",\n      \"lead_to_customer_rate\"\n    ],\n    dimensions: [\n      \"campaign_name\",\n      \"channel\",\n      \"region\",\n      \"country\",\n      \"audience_segment\",\n      \"device\",\n      \"campaign_objective\",\n      \"campaign_status\"\n    ],\n    date_column: \"campaign_date\"\n  }\n};\n\n// If the Planner picked the wrong dataset, use metric/dimension evidence to\n// correct it deterministically before validation.\nconst metricDatasetMap = {\n  order_count: \"ecommerce_orders\",\n  gross_sales: \"ecommerce_orders\",\n  net_sales: \"ecommerce_orders\",\n  return_rate: \"ecommerce_orders\",\n  average_rating: \"ecommerce_orders\",\n  average_delivery_days: \"ecommerce_orders\",\n  spend: \"marketing_campaigns\",\n  impressions: \"marketing_campaigns\",\n  clicks: \"marketing_campaigns\",\n  conversions: \"marketing_campaigns\",\n  revenue: \"marketing_campaigns\",\n  leads: \"marketing_campaigns\",\n  new_customers: \"marketing_campaigns\",\n  ctr: \"marketing_campaigns\",\n  conversion_rate: \"marketing_campaigns\",\n  cost_per_click: \"marketing_campaigns\",\n  cost_per_conversion: \"marketing_campaigns\",\n  roas: \"marketing_campaigns\",\n  revenue_per_click: \"marketing_campaigns\",\n  lead_to_customer_rate: \"marketing_campaigns\"\n};\n\nconst dimensionDatasetMap = {\n  product_category: \"ecommerce_orders\",\n  product_name: \"ecommerce_orders\",\n  sales_channel: \"ecommerce_orders\",\n  payment_method: \"ecommerce_orders\",\n  order_status: \"ecommerce_orders\",\n  age_group: \"ecommerce_orders\",\n  channel: \"marketing_campaigns\",\n  audience_segment: \"marketing_campaigns\",\n  device: \"marketing_campaigns\",\n  campaign_objective: \"marketing_campaigns\",\n  campaign_status: \"marketing_campaigns\",\n  campaign_name: \"marketing_campaigns\"\n};\n\nconst metricDatasetVotes = plan.metrics\n  .map(metric => metricDatasetMap[metric])\n  .filter(Boolean);\n\nconst dimensionDatasetVotes = plan.dimensions\n  .map(dimension => dimensionDatasetMap[dimension])\n  .filter(Boolean);\n\nconst datasetVotes = metricDatasetVotes.concat(dimensionDatasetVotes);\n\nconst ecommerceVotes = datasetVotes.filter(dataset => dataset === \"ecommerce_orders\").length;\nconst marketingVotes = datasetVotes.filter(dataset => dataset === \"marketing_campaigns\").length;\n\nif (marketingVotes > ecommerceVotes) {\n  plan.dataset = \"marketing_campaigns\";\n  plan.date_range.date_column = \"campaign_date\";\n}\n\nif (ecommerceVotes > marketingVotes) {\n  plan.dataset = \"ecommerce_orders\";\n  plan.date_range.date_column = \"order_date\";\n}\n\n// Clarification is for vague but potentially supported questions.\n// Unsupported was already handled above.\nif (\n  plan.route === \"clarification\" ||\n  plan.needs_clarification === true ||\n  plan.dataset === \"unknown\" ||\n  plan.analysis_type === \"unknown\"\n) {\n  return [{\n  json: {\n    trace_id: traceId,\n    user_question: userQuestion,\n    session_id: sessionId,\n    source_channel: sourceChannel,\n    plan_valid: false,\n    route: \"clarification\",\n    errors: [],\n    plan\n  }\n}];\n}\n\nconst datasetConfig = allowed[plan.dataset];\n\nif (!datasetConfig) {\n  errors.push(`Invalid dataset: ${plan.dataset}`);\n}\n\n// If the Planner supplied filters but forgot dimensions, infer dimensions from\n// valid filter fields. Example: filter product_category = Electronics.\nif (datasetConfig) {\n  for (const filter of plan.filters) {\n    if (\n      datasetConfig.dimensions.includes(filter.field) &&\n      !plan.dimensions.includes(filter.field)\n    ) {\n      plan.dimensions.push(filter.field);\n    }\n  }\n}\n\nconst metrics = plan.metrics;\nconst dimensions = plan.dimensions;\n\nfor (const metric of metrics) {\n  if (datasetConfig && !datasetConfig.metrics.includes(metric)) {\n    errors.push(`Metric \"${metric}\" is not allowed for ${plan.dataset}`);\n  }\n}\n\nfor (const dimension of dimensions) {\n  if (datasetConfig && !datasetConfig.dimensions.includes(dimension)) {\n    errors.push(`Dimension \"${dimension}\" is not allowed for ${plan.dataset}`);\n  }\n}\n\nif (\n  datasetConfig &&\n  plan.date_range.date_column &&\n  plan.date_range.date_column !== datasetConfig.date_column\n) {\n  errors.push(`Invalid date column for ${plan.dataset}`);\n}\n\nconst dimensionRequiredTypes = [\n  \"grouped_metric_ranking\",\n  \"grouped_metric_breakdown\",\n  \"filtered_grouped_breakdown\",\n  \"dimension_comparison\"\n];\n\nif (\n  dimensionRequiredTypes.includes(plan.analysis_type) &&\n  dimensions.length === 0\n) {\n  errors.push(`Analysis type \"${plan.analysis_type}\" requires at least one dimension.`);\n}\n\nreturn [{\n  json: {\n    trace_id: traceId,\n    user_question: userQuestion,\n    session_id: sessionId,\n    source_channel: sourceChannel,\n    plan_valid: errors.length === 0,\n    route: errors.length === 0 ? plan.dataset : \"invalid_plan\",\n    errors,\n    plan\n  }\n}];"
+        "jsCode": "const input = $input.first().json;\nconst plan = input.plan || input.output || input;\nconst errors = [];\n\nlet prepareInput = {};\ntry {\n  prepareInput = $(\"Prepare Input\").first().json;\n} catch (error) {\n  prepareInput = {};\n}\n\nconst traceId = input.trace_id || prepareInput.trace_id || $execution.id;\nconst userQuestion = input.user_question || prepareInput.user_question || \"\";\nconst sessionId = input.session_id || prepareInput.session_id || null;\nconst sourceChannel = input.source_channel || prepareInput.source_channel || null;\nconst cacheHit = input.cache_hit === true;\nconst planSource = cacheHit ? \"cache\" : \"planner\";\n\nfunction normalizeKey(value) {\n  if (typeof value !== \"string\") return value;\n  return value.trim().toLowerCase().replace(/\\s+/g, \"_\");\n}\n\nfunction normalizePlan(rawPlan) {\n  const normalized = {\n    ...rawPlan,\n    metrics: Array.isArray(rawPlan.metrics) ? rawPlan.metrics : [],\n    dimensions: Array.isArray(rawPlan.dimensions) ? rawPlan.dimensions : [],\n    filters: Array.isArray(rawPlan.filters) ? rawPlan.filters : [],\n    date_range:\n      rawPlan.date_range && typeof rawPlan.date_range === \"object\"\n        ? rawPlan.date_range\n        : {\n            start: null,\n            end: null,\n            date_column: null,\n            relative_period: null\n          }\n  };\n\n  normalized.route = normalizeKey(normalized.route);\n  normalized.dataset = normalizeKey(normalized.dataset);\n  normalized.analysis_type = normalizeKey(normalized.analysis_type);\n  normalized.intent = normalizeKey(normalized.intent);\n\n  normalized.metrics = normalized.metrics.map(normalizeKey);\n  normalized.dimensions = normalized.dimensions.map(normalizeKey);\n\n  normalized.filters = normalized.filters.map(filter => ({\n    ...filter,\n    field: normalizeKey(filter.field),\n    operator: normalizeKey(filter.operator)\n  }));\n\n  normalized.date_range = {\n    start: normalized.date_range.start || null,\n    end: normalized.date_range.end || null,\n    date_column: normalizeKey(normalized.date_range.date_column || null),\n    relative_period: normalizeKey(normalized.date_range.relative_period || null)\n  };\n\n  return normalized;\n}\n\nfunction baseOutput(extra) {\n  return [{\n    json: {\n      ...input,\n      trace_id: traceId,\n      user_question: userQuestion,\n      session_id: sessionId,\n      source_channel: sourceChannel,\n      cache_hit: cacheHit,\n      plan_source: planSource,\n      ...extra\n    }\n  }];\n}\n\nlet normalizedPlan = normalizePlan(plan);\n\n// Read business catalog if it is present on the current item.\n// If not, fall back to the Add Business Catalog node.\nlet catalog = input.business_catalog || {};\nif (!catalog.datasets) {\n  try {\n    catalog = $(\"Add Business Catalog\").first().json.business_catalog || {};\n  } catch (error) {\n    catalog = {};\n  }\n}\n\nconst unsupportedTerms = [\n  \"employee\",\n  \"employees\",\n  \"salary\",\n  \"salaries\",\n  \"payroll\",\n  \"hr\",\n  \"human_resources\",\n  \"inventory\",\n  \"stock_level\",\n  \"stock_levels\",\n  \"support_ticket\",\n  \"support_tickets\",\n  \"weather\",\n  \"stock_price\",\n  \"stock_prices\"\n];\n\nconst normalizedQuestion = normalizeKey(userQuestion || \"\") || \"\";\nconst isClearlyUnsupported = unsupportedTerms.some(term => {\n  return normalizedQuestion.includes(term);\n});\n\n// Unsupported is checked before clarification because unsupported plans often\n// use dataset = unknown and analysis_type = unknown.\nif (\n  isClearlyUnsupported ||\n  normalizedPlan.route === \"unsupported\" ||\n  normalizedPlan.dataset === \"unsupported\" ||\n  normalizedPlan.intent === \"unsupported\" ||\n  normalizedPlan.analysis_type === \"unsupported\"\n) {\n  return baseOutput({\n    plan_valid: false,\n    route: \"unsupported\",\n    errors: [\"Unsupported dataset or question type.\"],\n    plan: {\n      ...normalizedPlan,\n      route: \"unsupported\",\n      intent: \"unsupported\",\n      dataset: \"unknown\",\n      analysis_type: \"unknown\",\n      metrics: [],\n      dimensions: [],\n      filters: [],\n      date_range: {\n        start: null,\n        end: null,\n        date_column: \"unknown\",\n        relative_period: null\n      },\n      limit: 0,\n      needs_clarification: false,\n      clarification_question: null\n    }\n  });\n}\n\nconst datasets = catalog.datasets || {};\nconst datasetCatalog = datasets[normalizedPlan.dataset] || {};\n\nconst fieldAliases =\n  datasetCatalog.field_aliases ||\n  datasetCatalog.dimension_aliases ||\n  {};\n\nconst metricAliases = datasetCatalog.metric_aliases || {};\n\nconst fallbackMetricAliases = {\n  ecommerce_orders: {\n    sales: \"net_sales\",\n    total_sales: \"net_sales\",\n    revenue: \"net_sales\",\n    net_revenue: \"net_sales\",\n    gross_revenue: \"gross_sales\",\n    orders: \"order_count\",\n    order_volume: \"order_count\",\n    number_of_orders: \"order_count\",\n    returns: \"return_rate\",\n    returned_orders: \"return_rate\",\n    rating: \"average_rating\",\n    customer_rating: \"average_rating\",\n    delivery_time: \"average_delivery_days\",\n    shipping_time: \"average_delivery_days\"\n  },\n  marketing_campaigns: {\n    return_on_ad_spend: \"roas\",\n    return_on_ads_spend: \"roas\",\n    roas: \"roas\",\n    click_through_rate: \"ctr\",\n    c_t_r: \"ctr\",\n    cvr: \"conversion_rate\",\n    conversion_percentage: \"conversion_rate\",\n    conversion_percent: \"conversion_rate\",\n    conversions_rate: \"conversion_rate\",\n    cpc: \"cost_per_click\",\n    cpa: \"cost_per_conversion\",\n    cost_per_acquisition: \"cost_per_conversion\",\n    rpc: \"revenue_per_click\",\n    lead_customer_rate: \"lead_to_customer_rate\"\n  }\n};\n\nconst fallbackDimensionAliases = {\n  ecommerce_orders: {\n    category: \"product_category\",\n    product_category_name: \"product_category\",\n    product_type: \"product_category\",\n    item_category: \"product_category\",\n    product: \"product_name\",\n    item: \"product_name\",\n    channel: \"sales_channel\",\n    order_channel: \"sales_channel\",\n    purchase_channel: \"sales_channel\",\n    platform: \"sales_channel\",\n    payment: \"payment_method\",\n    status: \"order_status\",\n    location: \"region\",\n    market: \"region\",\n    geography: \"region\"\n  },\n  marketing_campaigns: {\n    platform: \"channel\",\n    ad_platform: \"channel\",\n    marketing_platform: \"channel\",\n    social_platform: \"channel\",\n    marketing_channel: \"channel\",\n    campaign_channel: \"channel\",\n    traffic_channel: \"channel\",\n    traffic_source: \"channel\",\n    ad_channel: \"channel\",\n    source: \"channel\",\n    placement: \"channel\",\n    audience: \"audience_segment\",\n    segment: \"audience_segment\",\n    objective: \"campaign_objective\",\n    status: \"campaign_status\"\n  }\n};\n\nfunction applyAliases(currentPlan) {\n  const metricAliasMap = fallbackMetricAliases[currentPlan.dataset] || {};\n  const dimensionAliasMap = fallbackDimensionAliases[currentPlan.dataset] || {};\n\n  currentPlan.metrics = currentPlan.metrics.map(metric => {\n    return metricAliases[metric] || metricAliasMap[metric] || metric;\n  });\n\n  currentPlan.dimensions = currentPlan.dimensions.map(dimension => {\n    return fieldAliases[dimension] || dimensionAliasMap[dimension] || dimension;\n  });\n\n  currentPlan.filters = currentPlan.filters.map(filter => ({\n    ...filter,\n    field: fieldAliases[filter.field] || dimensionAliasMap[filter.field] || filter.field\n  }));\n\n  return currentPlan;\n}\n\nnormalizedPlan = applyAliases(normalizedPlan);\n\n// Phase 1 allowlist. Query builders only receive plans that pass this contract.\nconst allowed = {\n  ecommerce_orders: {\n    metrics: [\n      \"order_count\",\n      \"gross_sales\",\n      \"net_sales\",\n      \"return_rate\",\n      \"average_rating\",\n      \"average_delivery_days\"\n    ],\n    dimensions: [\n      \"gender\",\n      \"region\",\n      \"country\",\n      \"city\",\n      \"product_category\",\n      \"product_name\",\n      \"sales_channel\",\n      \"payment_method\",\n      \"order_status\",\n      \"age_group\"\n    ],\n    date_column: \"order_date\"\n  },\n  marketing_campaigns: {\n    metrics: [\n      \"spend\",\n      \"impressions\",\n      \"clicks\",\n      \"conversions\",\n      \"revenue\",\n      \"leads\",\n      \"new_customers\",\n      \"ctr\",\n      \"conversion_rate\",\n      \"cost_per_click\",\n      \"cost_per_conversion\",\n      \"roas\",\n      \"revenue_per_click\",\n      \"lead_to_customer_rate\"\n    ],\n    dimensions: [\n      \"campaign_name\",\n      \"channel\",\n      \"region\",\n      \"country\",\n      \"audience_segment\",\n      \"device\",\n      \"campaign_objective\",\n      \"campaign_status\"\n    ],\n    date_column: \"campaign_date\"\n  }\n};\n\n// Use metric and dimension evidence to correct obvious dataset mistakes.\nconst metricDatasetMap = {\n  order_count: \"ecommerce_orders\",\n  gross_sales: \"ecommerce_orders\",\n  net_sales: \"ecommerce_orders\",\n  return_rate: \"ecommerce_orders\",\n  average_rating: \"ecommerce_orders\",\n  average_delivery_days: \"ecommerce_orders\",\n  spend: \"marketing_campaigns\",\n  impressions: \"marketing_campaigns\",\n  clicks: \"marketing_campaigns\",\n  conversions: \"marketing_campaigns\",\n  revenue: \"marketing_campaigns\",\n  leads: \"marketing_campaigns\",\n  new_customers: \"marketing_campaigns\",\n  ctr: \"marketing_campaigns\",\n  conversion_rate: \"marketing_campaigns\",\n  cost_per_click: \"marketing_campaigns\",\n  cost_per_conversion: \"marketing_campaigns\",\n  roas: \"marketing_campaigns\",\n  revenue_per_click: \"marketing_campaigns\",\n  lead_to_customer_rate: \"marketing_campaigns\"\n};\n\nconst dimensionDatasetMap = {\n  product_category: \"ecommerce_orders\",\n  product_name: \"ecommerce_orders\",\n  sales_channel: \"ecommerce_orders\",\n  payment_method: \"ecommerce_orders\",\n  order_status: \"ecommerce_orders\",\n  age_group: \"ecommerce_orders\",\n  channel: \"marketing_campaigns\",\n  audience_segment: \"marketing_campaigns\",\n  device: \"marketing_campaigns\",\n  campaign_objective: \"marketing_campaigns\",\n  campaign_status: \"marketing_campaigns\",\n  campaign_name: \"marketing_campaigns\"\n};\n\nconst datasetVotes = normalizedPlan.metrics\n  .map(metric => metricDatasetMap[metric])\n  .concat(normalizedPlan.dimensions.map(dimension => dimensionDatasetMap[dimension]))\n  .filter(Boolean);\n\nconst ecommerceVotes = datasetVotes.filter(dataset => dataset === \"ecommerce_orders\").length;\nconst marketingVotes = datasetVotes.filter(dataset => dataset === \"marketing_campaigns\").length;\n\nif (marketingVotes > ecommerceVotes) {\n  normalizedPlan.dataset = \"marketing_campaigns\";\n  normalizedPlan.date_range.date_column = \"campaign_date\";\n  normalizedPlan = applyAliases(normalizedPlan);\n}\n\nif (ecommerceVotes > marketingVotes) {\n  normalizedPlan.dataset = \"ecommerce_orders\";\n  normalizedPlan.date_range.date_column = \"order_date\";\n  normalizedPlan = applyAliases(normalizedPlan);\n}\n\n// Clarification is for vague but potentially supported questions.\nif (\n  normalizedPlan.route === \"clarification\" ||\n  normalizedPlan.needs_clarification === true ||\n  normalizedPlan.dataset === \"unknown\" ||\n  normalizedPlan.analysis_type === \"unknown\"\n) {\n  return baseOutput({\n    plan_valid: false,\n    route: \"clarification\",\n    errors: [],\n    plan: normalizedPlan\n  });\n}\n\nconst datasetConfig = allowed[normalizedPlan.dataset];\n\nif (!datasetConfig) {\n  errors.push(`Invalid dataset: ${normalizedPlan.dataset}`);\n}\n\nif (\n  datasetConfig &&\n  (!normalizedPlan.date_range.date_column ||\n    normalizedPlan.date_range.date_column === \"unknown\")\n) {\n  normalizedPlan.date_range.date_column = datasetConfig.date_column;\n}\n\n// If the Planner supplied filters but forgot dimensions, infer dimensions from\n// valid filter fields. Example: product_category = Electronics.\nif (datasetConfig) {\n  for (const filter of normalizedPlan.filters) {\n    if (\n      datasetConfig.dimensions.includes(filter.field) &&\n      !normalizedPlan.dimensions.includes(filter.field)\n    ) {\n      normalizedPlan.dimensions.push(filter.field);\n    }\n  }\n}\n\nfor (const metric of normalizedPlan.metrics) {\n  if (datasetConfig && !datasetConfig.metrics.includes(metric)) {\n    errors.push(`Metric \"${metric}\" is not allowed for ${normalizedPlan.dataset}`);\n  }\n}\n\nfor (const dimension of normalizedPlan.dimensions) {\n  if (datasetConfig && !datasetConfig.dimensions.includes(dimension)) {\n    errors.push(`Dimension \"${dimension}\" is not allowed for ${normalizedPlan.dataset}`);\n  }\n}\n\nif (\n  datasetConfig &&\n  normalizedPlan.date_range.date_column &&\n  normalizedPlan.date_range.date_column !== datasetConfig.date_column\n) {\n  errors.push(`Invalid date column for ${normalizedPlan.dataset}`);\n}\n\nconst dimensionRequiredTypes = [\n  \"grouped_metric_ranking\",\n  \"grouped_metric_breakdown\",\n  \"filtered_grouped_breakdown\",\n  \"dimension_comparison\"\n];\n\nif (\n  dimensionRequiredTypes.includes(normalizedPlan.analysis_type) &&\n  normalizedPlan.dimensions.length === 0\n) {\n  errors.push(\n    `Analysis type \"${normalizedPlan.analysis_type}\" requires at least one dimension.`\n  );\n}\n\nreturn baseOutput({\n  plan_valid: errors.length === 0,\n  route: errors.length === 0 ? normalizedPlan.dataset : \"invalid_plan\",\n  errors,\n  plan: normalizedPlan\n});"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        640,
-        1248
+        1088,
+        624
       ],
-      "id": "7a4975db-d141-43d9-ba4a-795c50cf4458",
+      "id": "94380d6a-786a-4699-973d-5da762777624",
       "name": "Validate Analysis Plan"
     },
     {
@@ -101,11 +87,17 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.3,
       "position": [
-        296,
-        1472
+        656,
+        1072
       ],
-      "id": "cf822f54-c7be-43b7-8c7e-41e331cf4b52",
-      "name": "OpenAI Chat Model"
+      "id": "170fa446-a0ea-4fcf-b506-83facb69292d",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "RECONNECT_OPENAI_OR_GROQ_CREDENTIAL_IN_N8N",
+          "name": "RECONNECT: OpenAI-compatible model credential"
+        }
+      }
     },
     {
       "parameters": {
@@ -115,25 +107,26 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        424,
-        1472
+        992,
+        1072
       ],
-      "id": "aeaab480-aa57-4d89-a014-a1ac0ed76ed1",
+      "id": "108676b2-1010-456b-af59-7f9ef9592a61",
       "name": "Structured Output Parser"
     },
     {
       "parameters": {
-        "content": "## Phase 1 Design Note\n\nCurrent:\nPlanner schema uses static Phase 1 enums.\nBusiness catalog defines supported datasets, metrics, dimensions, aliases and known values.\nMetric formulas come from Supabase metric_registry.\nSQL structure is controlled by deterministic query builders.\n\nLater:\nMove more catalog and schema generation into database-backed metadata.\nConsider splitting ecommerce and marketing into sub-workflows after Phase 1 is stable.",
-        "height": 288,
-        "width": 512
+        "content": "## Responsibility Split\n\nRequest Guard:\nValidates the incoming request before any AI or database work runs. Blocks malformed, oversized, unauthenticated, or obviously unsafe requests.\n\nPlanner Agent:\nClassifies the user’s intent and proposes a structured analysis plan: route, dataset, metric, dimension, filters, date range, limit, and clarification need.\n\nPlanner Cache:\nReuses previously validated unresolved plans for repeated questions, while still allowing runtime validation and date resolution.\n\nValidate Analysis Plan:\nNormalizes aliases, canonicalizes metrics and dimensions, corrects safe dataset mismatches, validates limits and dates, and blocks unsupported or invalid plans.\n\nMetadata Authorization Guard:\nChecks the validated plan against approved dataset metadata from Supabase. Confirms allowed tables, dimensions, filters, date columns, and dataset access.\n\nMetric Registry:\nStores trusted KPI formulas and business definitions. Metric formulas are fetched from Supabase and are not generated by the model.\n\nBuild Analytics Query:\nCreates deterministic SQL from approved metadata, validated planner output, and trusted metric formulas.\n\nSQL Safety Guard:\nPerforms a final safety check before execution. Blocks undefined, destructive, multi-statement, or unauthorized SQL.\n\nExecute Analytics Query:\nRuns the approved read-only SQL query in Supabase Postgres using the analytics reader credential.\n\nValidate Analytics Result:\nChecks whether the result is complete enough to answer. Handles empty results, missing comparison values, missing date ranges, invalid metric values, and data-quality warnings.\n\nResponse Composer:\nTurns verified analytics JSON into concise business language without recalculating, inventing, or modifying values.\n\nResponse Safety Guard:\nChecks the final answer before returning it to the user. Prevents internal workflow details, unsafe claims, or missing source information from being exposed.\n\nExecution Logger:\nWrites success and controlled-failure traces to Supabase using the audit/write credential.",
+        "height": 1088,
+        "width": 1152,
+        "color": 5
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -1056,
-        -208
+        -480,
+        -1584
       ],
       "typeVersion": 1,
-      "id": "a254e48e-fd3a-4eda-8131-acbe5f827289",
+      "id": "f4cc7885-97ff-4112-a758-f1725ef749da",
       "name": "Sticky Note"
     },
     {
@@ -154,10 +147,10 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        -832,
-        1248
+        -384,
+        624
       ],
-      "id": "6f3f073a-47bc-4ec3-a930-f0d7c9f2bb6a",
+      "id": "24378ceb-a59d-4686-8848-254f7fe54228",
       "name": "Add Business Catalog"
     },
     {
@@ -172,10 +165,10 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
       "position": [
-        4368,
+        5696,
         256
       ],
-      "id": "fdc015e2-b376-49b0-859d-b8b538efc176",
+      "id": "99fd2d0b-c188-4945-aed2-cce26274c37e",
       "name": "Response Composer"
     },
     {
@@ -194,11 +187,17 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.3,
       "position": [
-        4368,
-        432
+        5776,
+        496
       ],
-      "id": "875cccad-178f-4483-8350-63b18088d59f",
-      "name": "OpenAI Chat Model1"
+      "id": "e1c987a9-4c7a-4541-a4cd-47e4d6e68e51",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "RECONNECT_OPENAI_OR_GROQ_CREDENTIAL_IN_N8N",
+          "name": "RECONNECT: OpenAI-compatible model credential"
+        }
+      }
     },
     {
       "parameters": {
@@ -209,168 +208,30 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        4624,
-        848
+        6048,
+        656
       ],
-      "id": "fd6cf56c-06ee-4cca-bc83-c17cf07cf5f2",
-      "name": "Add Execution Log"
+      "id": "64c2cc0e-5cf7-45a8-b785-8817e474bfe7",
+      "name": "Add Execution Log",
+      "credentials": {
+        "postgres": {
+          "id": "RECONNECT_SUPABASE_AUDIT_WRITER_CREDENTIAL_IN_N8N",
+          "name": "RECONNECT: Supabase audit writer credential"
+        }
+      }
     },
     {
       "parameters": {
-        "rules": {
-          "values": [
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "leftValue": "={{ $json.route }}",
-                    "rightValue": "ecommerce_orders",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    },
-                    "id": "8cec6d9f-773a-43a7-90ff-019e9b1f6ae0"
-                  }
-                ],
-                "combinator": "and"
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "c70c686b-a459-43f2-819b-3f292c3a096f",
-                    "leftValue": "={{ $json.route }}",
-                    "rightValue": "marketing_campaigns",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "2a281c31-0ee9-4556-8f77-1f5240517324",
-                    "leftValue": "={{ $json.route }}",
-                    "rightValue": "clarification",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "89256ed5-cc8f-4ce0-93d2-c91eab89f509",
-                    "leftValue": "={{ $json.route }}",
-                    "rightValue": "unsupported",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              }
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 3
-                },
-                "conditions": [
-                  {
-                    "id": "3fe94e7c-182c-4376-a2fe-c4bd83502364",
-                    "leftValue": "={{ $json.route }}",
-                    "rightValue": "invalid_plan",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals",
-                      "name": "filter.operator.equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              }
-            }
-          ]
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
-      "position": [
-        2208,
-        960
-      ],
-      "id": "ae33e1e4-f281-46a1-972f-87c7c7086266",
-      "name": "Main Switch"
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $input.first().json;\n\nconst route = input.route || (input.output ? input.output.route : null);\nconst plan = input.plan || input.output || {};\nconst errors = input.errors || [];\n\nconst traceId = input.trace_id || $execution.id;\nconst userQuestion = input.user_question || \"\";\nconst sessionId = input.session_id || null;\nconst sourceChannel = input.source_channel || null;\n\nlet response = \"\";\n\nif (route === \"clarification\") {\n  response =\n    plan.clarification_question ||\n    \"Can you clarify what you would like me to analyze?\";\n} else if (route === \"unsupported\") {\n  response =\n    \"I can help with ecommerce orders and marketing campaign analytics. This question looks outside the datasets currently available in Phase 1.\";\n} else if (route === \"invalid_plan\") {\n  response =\n    \"I could not create a safe analysis plan for this question. Please ask using a supported ecommerce or marketing metric, such as sales by category, return rate by region, or ROAS by channel.\";\n} else {\n  response =\n    \"I could not route this request safely. Please try a supported ecommerce or marketing analytics question.\";\n}\n\nreturn [{\n  json: {\n    trace_id: traceId,\n    user_question: userQuestion,\n    session_id: sessionId,\n    source_channel: sourceChannel,\n    status: route,\n    response,\n    route,\n    plan,\n    errors,\n    warnings: errors\n  }\n}];"
+        "jsCode": "const input = $input.first().json;\n\nconst route = input.route || (input.output ? input.output.route : null);\nconst plan = input.plan || input.output || {};\nconst errors = input.errors || [];\nconst warnings = input.warnings || [];\n\nconst traceId = input.trace_id || $execution.id;\nconst userQuestion = input.user_question || \"\";\nconst sessionId = input.session_id || null;\nconst sourceChannel = input.source_channel || null;\n\nlet response = \"\";\n\nif (route === \"security_blocked\") {\n  response =\n    input.response ||\n    \"I cannot process this request because it did not pass the workflow safety checks.\";\n} else if (route === \"clarification\") {\n  response =\n    plan.clarification_question ||\n    \"Can you clarify what you would like me to analyze?\";\n} else if (route === \"unsupported\") {\n  response =\n    \"I’m built specifically for ecommerce and marketing analytics. This question looks outside the datasets currently available.\";\n} else if (route === \"invalid_plan\") {\n  response =\n    \"I could not create a safe analysis plan for this question. Please ask using a supported ecommerce or marketing metric, such as sales by category, return rate by region, or ROAS by channel.\";\n} else {\n  response =\n    \"I could not route this request safely. Please try a supported ecommerce or marketing analytics question.\";\n}\n\nreturn [{\n  json: {\n    trace_id: traceId,\n    user_question: userQuestion,\n    session_id: sessionId,\n    source_channel: sourceChannel,\n    status: route || \"controlled_failure\",\n    response,\n    route,\n    plan,\n    errors,\n    warnings,\n    security_signals: input.security_signals || [],\n    selected_dataset: input.selected_dataset || input.dataset || plan.dataset || \"unknown\",\n    dataset: input.dataset || plan.dataset || \"unknown\",\n    metrics: input.metrics || plan.metrics || [],\n    analysis_type: input.analysis_type || plan.analysis_type || \"unknown\",\n    row_count: input.row_count || 0,\n    date_start: input.date_start || null,\n    date_end: input.date_end || null,\n    response_type: \"controlled_failure\"\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3856,
-        1120
+        4912,
+        928
       ],
-      "id": "6d8af2ff-1fe6-44c1-881d-116508fab767",
+      "id": "33350426-a6ac-44a3-a069-7979c928a2a5",
       "name": "Build Controlled Response"
-    },
-    {
-      "parameters": {
-        "jsCode": "function getNodeJson(nodeName) {\n  try {\n    return $(nodeName).first().json;\n  } catch (error) {\n    return null;\n  }\n}\n\n// This node is shared by ecommerce and marketing, so read context from whichever\n// query builder ran in this execution.\nconst queryContext =\n  getNodeJson(\"Build Ecommerce Analytics Query\") ||\n  getNodeJson(\"Build Marketing Analytics Query\") ||\n  {};\n\nconst rows = $input.all().map(item => item.json);\n\nconst plan = queryContext.plan || {};\nconst queryMetadata = queryContext.query_metadata || {};\n\nconst dataset = queryMetadata.dataset || plan.dataset || \"unknown\";\nconst analysisType = queryMetadata.analysis_type || plan.analysis_type || \"unknown\";\n\nconst metrics = Array.isArray(queryMetadata.metrics)\n  ? queryMetadata.metrics\n  : Array.isArray(plan.metrics)\n    ? plan.metrics\n    : [];\n\nconst dimensions = Array.isArray(queryMetadata.dimensions)\n  ? queryMetadata.dimensions\n  : Array.isArray(plan.dimensions)\n    ? plan.dimensions\n    : [];\n\nconst primaryMetric = metrics[0] || null;\nconst primaryDimension = dimensions[0] || null;\nconst dateRange = plan.date_range || {};\n\n// Ratio metrics can return null when their denominator is zero or missing.\nconst ratioMetrics = [\n  \"return_rate\",\n  \"ctr\",\n  \"conversion_rate\",\n  \"cost_per_click\",\n  \"cost_per_conversion\",\n  \"roas\",\n  \"revenue_per_click\",\n  \"lead_to_customer_rate\"\n];\n\nconst requestedValuesFromMetadata = Array.isArray(queryMetadata.requested_filter_values)\n  ? queryMetadata.requested_filter_values.map(value => String(value))\n  : [];\n\nconst requestedValuesFromPlan = Array.isArray(plan.filters)\n  ? plan.filters\n      .filter(filter => {\n        return (\n          filter.field === primaryDimension &&\n          filter.operator === \"equals\" &&\n          filter.value !== undefined &&\n          filter.value !== null &&\n          String(filter.value).trim() !== \"\"\n        );\n      })\n      .map(filter => String(filter.value))\n  : [];\n\nconst requestedValues = requestedValuesFromMetadata.length\n  ? requestedValuesFromMetadata\n  : requestedValuesFromPlan;\n\nconst noRecordsWarning = requestedValues.length\n  ? `No matching records found for: ${requestedValues.join(\", \")}`\n  : dateRange.start && dateRange.end\n    ? `No records were found for the resolved date range: ${dateRange.start} to ${dateRange.end}.`\n    : \"No records were found for this analysis.\";\n\n// Empty results mean the requested filter or dataset slice has no usable data.\nif (!rows.length) {\n  return [{\n    json: {\n      trace_id: queryContext.trace_id || null,\n      user_question: queryContext.user_question || \"\",\n      plan,\n      dataset,\n      analysis_type: analysisType,\n      metrics,\n      dimensions,\n      dimension: primaryDimension,\n      row_count: 0,\n      group_record_count: 0,\n      date_start: dateRange.start || null,\n      date_end: dateRange.end || null,\n      warnings: [noRecordsWarning],\n      status: \"failed\",\n      response_type: \"controlled_failure\",\n      results: []\n    }\n  }];\n}\n\nconst first = rows[0];\n\n// Metadata-only zero-row results happen when the SQL has no matching base rows.\nconst hasZeroRows = Number(first.total_row_count || 0) === 0;\n\nif (hasZeroRows) {\n  return [{\n    json: {\n      trace_id: queryContext.trace_id || null,\n      user_question: queryContext.user_question || \"\",\n      plan,\n      dataset,\n      analysis_type: analysisType,\n      metrics,\n      dimensions,\n      dimension: primaryDimension,\n      row_count: 0,\n      group_record_count: 0,\n      date_start: dateRange.start || null,\n      date_end: dateRange.end || null,\n      warnings: [noRecordsWarning],\n      status: \"failed\",\n      response_type: \"controlled_failure\",\n      results: []\n    }\n  }];\n}\n\nconst warnings = [];\n\n// For comparison questions, make sure every requested value came back.\n// Example: Email exists but Paid Social does not, so we should not answer.\nconst returnedValues = rows.map(row => String(row.dimension_value));\n\nconst missingValues = requestedValues.filter(value => {\n  return !returnedValues.includes(String(value));\n});\n\nif (missingValues.length) {\n  warnings.push(`No matching records found for: ${missingValues.join(\", \")}`);\n}\n\n// Null metric values usually mean the formula could not be calculated.\nconst hasNullMetricValue = rows.some(row => {\n  return row.metric_value === null || row.metric_value === undefined;\n});\n\nif (hasNullMetricValue && ratioMetrics.includes(primaryMetric)) {\n  warnings.push(\n    `The metric \"${primaryMetric}\" could not be calculated because the denominator was zero or missing.`\n  );\n} else if (hasNullMetricValue) {\n  warnings.push(\"The selected metric returned no value.\");\n}\n\n// Missing dates are not always fatal, but the answer should carry a warning.\nconst hasMissingDateRange = rows.some(row => {\n  return !row.date_start || !row.date_end;\n});\n\nif (hasMissingDateRange) {\n  warnings.push(\"The result does not include a complete date range.\");\n}\n\nconst totalRowCount = Number(\n  first.total_row_count ||\n  rows.reduce((sum, row) => {\n    return sum + Number(row.group_record_count || row.record_count || 0);\n  }, 0)\n);\n\nconst groupRecordCount = Number(\n  first.group_record_count ||\n  first.record_count ||\n  0\n);\n\n// Critical issues mean the system should not return a normal analytical answer.\nconst hasMissingComparisonValues =\n  analysisType === \"dimension_comparison\" && missingValues.length > 0;\n\nconst hasCriticalDataQualityIssue =\n  hasMissingComparisonValues || hasNullMetricValue;\n\nconst status = hasCriticalDataQualityIssue\n  ? \"failed\"\n  : warnings.length\n    ? \"success_with_warnings\"\n    : \"success\";\n\nconst responseType = hasCriticalDataQualityIssue\n  ? \"controlled_failure\"\n  : \"analytics_result\";\n\nreturn [{\n  json: {\n    trace_id: queryContext.trace_id || null,\n    user_question: queryContext.user_question || \"\",\n    plan,\n    dataset,\n    analysis_type: analysisType,\n    metrics,\n    dimensions,\n    dimension: primaryDimension,\n    row_count: totalRowCount,\n    group_record_count: groupRecordCount,\n    date_start: first.date_start || null,\n    date_end: first.date_end || null,\n    warnings,\n    status,\n    response_type: responseType,\n    results: hasCriticalDataQualityIssue ? [] : rows\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3744,
-        432
-      ],
-      "id": "b8c63728-0320-4d4c-aa86-2a1c20678706",
-      "name": "Validate Analytics Result"
     },
     {
       "parameters": {
@@ -379,10 +240,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4912,
+        6400,
         480
       ],
-      "id": "2e781e03-d68a-49e7-9628-b1b8bfd8dbf8",
+      "id": "ab9c407a-4523-4cb3-ace1-0a268ca81f9e",
       "name": "Format Final Response"
     },
     {
@@ -392,10 +253,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        4352,
-        848
+        5760,
+        656
       ],
-      "id": "eeae3ced-71fb-47e4-ba39-60cb50ca1a51",
+      "id": "04ffea77-85f2-4c14-b58c-069ccea133ef",
       "name": "Normalize Log Payload"
     },
     {
@@ -410,10 +271,10 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
       "position": [
-        288,
-        1248
+        752,
+        896
       ],
-      "id": "5ebe5cb9-a183-4acc-8410-8d5a4543b6dd",
+      "id": "4b22d768-0acf-4a76-a273-ce65a7a4e8ff",
       "name": "Planner Agent"
     },
     {
@@ -427,9 +288,9 @@
       "typeVersion": 2.1,
       "position": [
         -1280,
-        1248
+        752
       ],
-      "id": "0955e8d5-c6d5-46f2-af73-42dc5461ec3e",
+      "id": "7f0f298f-8833-41ed-8e05-879d8f25a290",
       "name": "Webhook"
     },
     {
@@ -441,26 +302,11 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        5328,
-        832
+        6736,
+        912
       ],
-      "id": "a29075b7-18f9-4b1a-8f2f-496f17f61bab",
+      "id": "15fbfab4-9a5b-4525-9ee7-f53f31edbf56",
       "name": "Respond to Webhook"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE planner_cache\nSET\n  last_used_at = now(),\n  hit_count = COALESCE(hit_count, 0) + 1\nWHERE question_hash = '{{ $json.question_hash.replace(/'/g, \"''\") }}';",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        1184,
-        896
-      ],
-      "id": "d9e1ebea-ca48-447a-8459-76b4efd5bd84",
-      "name": "Update Hit Count On Cache Hit"
     },
     {
       "parameters": {
@@ -471,11 +317,17 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        -384,
-        1248
+        64,
+        624
       ],
-      "id": "84d3ba22-4870-4ca2-8e13-f8fa39b3ea84",
-      "name": "Lookup Planner Cache"
+      "id": "82531984-0038-42b4-a55a-f5ed60915c39",
+      "name": "Lookup Planner Cache",
+      "credentials": {
+        "postgres": {
+          "id": "RECONNECT_SUPABASE_AUDIT_WRITER_CREDENTIAL_IN_N8N",
+          "name": "RECONNECT: Supabase audit writer credential"
+        }
+      }
     },
     {
       "parameters": {
@@ -505,23 +357,23 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        64,
-        1248
+        512,
+        624
       ],
-      "id": "75a25fe1-9d73-4585-a716-c804be0e7b06",
+      "id": "b686a859-42de-4e95-bf74-caf492e47c74",
       "name": "Cache Hit?"
     },
     {
       "parameters": {
-        "jsCode": "const prepareInput = $(\"Prepare Input\").first().json;\n\n// Adjust this depending on where your Supabase cache row stores the plan.\n// Common possibilities: $json.plan, $json.cached_plan, $json.plan_json\nconst rawCachedPlan =\n  $json.plan ||\n  $json.cached_plan ||\n  $json.plan_json ||\n  $json.output ||\n  null;\n\nlet plan = rawCachedPlan;\n\nif (typeof plan === \"string\") {\n  plan = JSON.parse(plan);\n}\n\nif (plan?.plan) {\n  plan = plan.plan;\n}\n\nif (!plan || typeof plan !== \"object\") {\n  return [{\n    json: {\n      ...prepareInput,\n      plan_valid: false,\n      route: \"invalid_plan\",\n      errors: [\"Cache hit did not include a usable analysis plan.\"],\n      cache_hit: true,\n      plan: null\n    }\n  }];\n}\n\nconst route =\n  plan.route === \"unsupported\"\n    ? \"unsupported\"\n    : plan.needs_clarification\n      ? \"clarification\"\n      : plan.dataset || \"invalid_plan\";\n\nreturn [{\n  json: {\n    ...prepareInput,\n    plan_valid: route !== \"invalid_plan\",\n    route,\n    errors: [],\n    cache_hit: true,\n    plan\n  }\n}];"
+        "jsCode": "const prepareInput = $(\"Prepare Input\").first().json;\n\n// Adjust this depending on where your Supabase cache row stores the plan.\n// Common possibilities: $json.plan, $json.cached_plan, $json.plan_json\nconst rawCachedPlan =\n  $json.plan ||\n  $json.cached_plan ||\n  $json.plan_json ||\n  $json.output ||\n  null;\n\nlet plan = rawCachedPlan;\n\ntry {\n  if (typeof plan === \"string\") {\n    plan = JSON.parse(plan);\n  }\n} catch (error) {\n  plan = null;\n}\n\nif (plan && plan.plan) {\n  plan = plan.plan;\n}\n\nif (!plan || typeof plan !== \"object\") {\n  return [{\n    json: {\n      ...prepareInput,\n      plan_valid: false,\n      route: \"invalid_plan\",\n      errors: [\"Cache hit did not include a usable analysis plan.\"],\n      cache_hit: true,\n      plan_source: \"cache\",\n      plan: null\n    }\n  }];\n}\n\nconst route =\n  plan.route === \"unsupported\"\n    ? \"unsupported\"\n    : plan.needs_clarification\n      ? \"clarification\"\n      : plan.dataset || \"invalid_plan\";\n\nreturn [{\n  json: {\n    ...prepareInput,\n    plan_valid: route !== \"invalid_plan\",\n    route,\n    errors: [],\n    cache_hit: true,\n    plan_source: \"cache\",\n    plan\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        960,
-        896
+        800,
+        480
       ],
-      "id": "11953b44-3273-484d-aa9c-d1cd25b5e506",
+      "id": "21030230-002a-4748-9e75-f3a4ad048d6d",
       "name": "Build Plan From Cache"
     },
     {
@@ -533,11 +385,17 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        1328,
-        1232
+        2048,
+        720
       ],
-      "id": "226abf95-2e87-4ffc-ab94-e0115a624df1",
-      "name": "Save Planner Cache"
+      "id": "07cae5f6-02e6-445f-b6ad-77b8278416f8",
+      "name": "Save Planner Cache",
+      "credentials": {
+        "postgres": {
+          "id": "RECONNECT_SUPABASE_AUDIT_WRITER_CREDENTIAL_IN_N8N",
+          "name": "RECONNECT: Supabase audit writer credential"
+        }
+      }
     },
     {
       "parameters": {
@@ -546,10 +404,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -608,
-        1248
+        -160,
+        624
       ],
-      "id": "ae4425e5-7542-4bce-8ed3-f8b8e44ac6b4",
+      "id": "29c56b1f-89c4-4ff0-9946-bc23603559a1",
       "name": "Normalize Question For Cache"
     },
     {
@@ -564,12 +422,11 @@
           "conditions": [
             {
               "id": "bc1a4678-484e-4a11-856d-b401ee688f71",
-              "leftValue": "={{ $json.plan_valid }}",
-              "rightValue": "",
+              "leftValue": "={{ $json.plan_source }}",
+              "rightValue": "planner",
               "operator": {
-                "type": "boolean",
-                "operation": "true",
-                "singleValue": true
+                "type": "string",
+                "operation": "equals"
               }
             },
             {
@@ -581,6 +438,16 @@
                 "operation": "equals",
                 "name": "filter.operator.equals"
               }
+            },
+            {
+              "id": "b304f45f-b9c1-4d54-aa51-65eef0264cd0",
+              "leftValue": "={{ $json.plan_valid }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -590,10 +457,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        1104,
-        1376
+        1824,
+        736
       ],
-      "id": "9da50b70-3b26-462d-863f-e39f845197e3",
+      "id": "62b26cb9-ba9e-47f2-9674-07dc83a0c2bd",
       "name": "Should Save Planner Cache?"
     },
     {
@@ -603,10 +470,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -160,
-        1248
+        288,
+        624
       ],
-      "id": "5661cd70-eeb5-4047-8751-5a6ad8201397",
+      "id": "de9f8209-53ef-4b88-99cc-a79e637198f0",
       "name": "Restore Input After Cache Lookup Code"
     },
     {
@@ -616,204 +483,11 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1568,
-        1232
+        2240,
+        720
       ],
-      "id": "c761b933-fe5e-43b9-bb96-21d9bf95b851",
+      "id": "f6531676-050a-4d7a-8dfb-4236347ecb21",
       "name": "Restore Plan After Cache Save"
-    },
-    {
-      "parameters": {
-        "jsCode": "const cachedPlanPayload = $(\"Build Plan From Cache\").first().json;\n\nreturn [{\n  json: {\n    ...cachedPlanPayload,\n    cache_hit_count_updated: true\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1472,
-        896
-      ],
-      "id": "04635a5a-8683-457a-922d-0729485dce5c",
-      "name": "Restore Plan After Hit Count Update"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Read the validated plan + fetched metric definition from the previous merge node.\nconst input = $input.first().json;\nconst metricDefinition = input.metric_definition;\nconst prepareInput = $(\"Prepare Input\").first().json;\n\n// Pull the normalized analysis plan into local variables.\nconst plan = input.plan || {};\nconst dataset = plan.dataset;\nconst analysisType = plan.analysis_type;\nconst metrics = plan.metrics || [];\nconst dimensions = plan.dimensions || [];\nconst filters = plan.filters || [];\nconst limit = Number(plan.limit || 0);\n\n// Return a controlled failure payload instead of allowing Postgres to run bad SQL.\nfunction fail(message) {\n  return [{\n    json: {\n      ...input,\n      route: \"invalid_plan\",\n      query_status: \"failed\",\n      errors: [...(input.errors || []), message]\n    }\n  }];\n}\n\n// The metric formula must come from metric_registry.\nif (!metricDefinition?.formula) {\n  return fail(`No metric definition was found for ${dataset}.${metrics[0] || \"unknown\"}`);\n}\n\n// This builder is intentionally dataset-specific for Phase 1.\nif (dataset !== \"ecommerce_orders\") {\n  return fail(`This query builder currently supports ecommerce_orders only. Got: ${dataset}`);\n}\n\nif (!metrics.length) {\n  return fail(\"No metric was provided.\");\n}\n\nif (!dimensions.length) {\n  return fail(\"No dimension was provided.\");\n}\n\nconst metric = metrics[0];\nconst dimension = dimensions[0];\n\nconst table = \"ecommerce_orders\";\nconst dateColumn = \"order_date\";\nconst metricSql = metricDefinition.formula;\n\n// Dimension names are allowlisted because they become SQL identifiers.\nconst allowedDimensions = {\n  gender: \"gender\",\n  region: \"region\",\n  country: \"country\",\n  city: \"city\",\n  product_category: \"product_category\",\n  product_name: \"product_name\",\n  sales_channel: \"sales_channel\",\n  payment_method: \"payment_method\",\n  order_status: \"order_status\",\n  age_group: \"age_group\"\n};\n\nif (!allowedDimensions[dimension]) {\n  return fail(`Unsupported ecommerce dimension: ${dimension}`);\n}\n\n// Phase 1 supports these deterministic query patterns only.\nconst supportedAnalysisTypes = [\n  \"grouped_metric_ranking\",\n  \"grouped_metric_breakdown\",\n  \"filtered_grouped_breakdown\",\n  \"dimension_comparison\"\n];\n\nif (!supportedAnalysisTypes.includes(analysisType)) {\n  return fail(`Unsupported ecommerce analysis type: ${analysisType}`);\n}\n\nconst dimensionSql = allowedDimensions[dimension];\n\n// Escape single quotes in filter values before placing them in SQL strings.\nfunction sqlString(value) {\n  return String(value).replace(/'/g, \"''\");\n}\n\n// Filtered and comparison questions must have at least one valid filter\n// for the same dimension being grouped.\nconst hasRequiredDimensionFilter = filters.some(filter => {\n  return (\n    filter.field === dimension &&\n    filter.operator === \"equals\" &&\n    filter.value !== undefined &&\n    filter.value !== null &&\n    String(filter.value).trim() !== \"\"\n  );\n});\n\nif (\n  (analysisType === \"filtered_grouped_breakdown\" ||\n    analysisType === \"dimension_comparison\") &&\n  !hasRequiredDimensionFilter\n) {\n  return fail(`Analysis type \"${analysisType}\" requires at least one valid filter on ${dimension}.`);\n}\n\n// Build the WHERE clause from safe dimension filters plus resolved date range.\nfunction buildWhereClause() {\n  const whereParts = [];\n\n  if (\n    analysisType === \"filtered_grouped_breakdown\" ||\n    analysisType === \"dimension_comparison\"\n  ) {\n    const relevantFilters = filters.filter(filter => {\n      return (\n        filter.field === dimension &&\n        filter.operator === \"equals\" &&\n        filter.value !== undefined &&\n        filter.value !== null &&\n        String(filter.value).trim() !== \"\"\n      );\n    });\n\n    if (relevantFilters.length) {\n      const values = relevantFilters.map(filter => `'${sqlString(filter.value)}'`);\n\n      if (values.length === 1) {\n        whereParts.push(`${dimensionSql} = ${values[0]}`);\n      } else {\n        whereParts.push(`${dimensionSql} IN (${values.join(\", \")})`);\n      }\n    }\n  }\n\n  // Date resolution happens before this node. If dates are present, apply them.\n  if (plan.date_range?.start && plan.date_range?.end) {\n    whereParts.push(\n      `${dateColumn} BETWEEN '${sqlString(plan.date_range.start)}'::date AND '${sqlString(plan.date_range.end)}'::date`\n    );\n  }\n\n  return whereParts.length ? `WHERE ${whereParts.join(\" AND \")}` : \"\";\n}\n\nconst whereClause = buildWhereClause();\n\n// Infer sort direction from the question/intent.\n// Most metrics rank descending, but \"lowest/fastest/shortest\" should rank ascending.\nconst questionText = `${plan.intent || \"\"} ${input.user_question || prepareInput.user_question || \"\"}`.toLowerCase();\n\nconst wantsLowest = [\n  \"lowest\",\n  \"least\",\n  \"smallest\",\n  \"minimum\",\n  \"shortest\",\n  \"fastest\"\n].some(word => questionText.includes(word));\n\nconst sortDirection = wantsLowest ? \"ASC\" : \"DESC\";\n\n// Limit only applies to ranking questions, such as highest/top/lowest.\nconst limitClause =\n  analysisType === \"grouped_metric_ranking\" && limit > 0\n    ? `LIMIT ${limit}`\n    : \"\";\n\n// Use a stable SQL template:\n// base = filtered rows\n// grouped = metric by dimension\n// metadata = row count and date range for the full analysis base\nconst sql = `\nWITH base AS (\n  SELECT *\n  FROM ${table}\n  ${whereClause}\n),\ngrouped AS (\n  SELECT\n    ${dimensionSql} AS dimension_value,\n    COUNT(*) AS group_record_count,\n    ROUND((${metricSql})::numeric, 2) AS metric_value\n  FROM base\n  GROUP BY ${dimensionSql}\n),\nmetadata AS (\n  SELECT\n    COUNT(*) AS total_row_count,\n    MIN(${dateColumn})::text AS date_start,\n    MAX(${dateColumn})::text AS date_end\n  FROM base\n)\nSELECT\n  '${dataset}' AS dataset,\n  '${analysisType}' AS analysis_type,\n  '${metric}' AS metric,\n  '${dimension}' AS primary_dimension,\n  grouped.dimension_value,\n  grouped.group_record_count,\n  metadata.total_row_count,\n  metadata.date_start,\n  metadata.date_end,\n  grouped.metric_value\nFROM grouped\nCROSS JOIN metadata\nORDER BY grouped.metric_value ${sortDirection} NULLS LAST\n${limitClause};\n`;\n\n// Return SQL plus metadata needed by validation, response composition, and logging.\nreturn [{\n  json: {\n    ...input,\n    trace_id: input.trace_id || prepareInput.trace_id || $execution.id,\n    user_question: (\n      input.user_question ||\n      prepareInput.user_question ||\n      \"\"\n    ).trim(),\n    plan,\n    query_status: \"ready\",\n    sql,\n    query_metadata: {\n      dataset,\n      analysis_type: analysisType,\n      metric_display_name: metricDefinition.display_name,\n      metric_business_definition: metricDefinition.business_definition,\n      metrics,\n      dimensions,\n      filters,\n      requested_filter_values: filters\n        .filter(filter => filter.field === dimension && filter.operator === \"equals\")\n        .map(filter => String(filter.value)),\n      limit,\n      sort_direction: sortDirection.toLowerCase()\n    }\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2960,
-        192
-      ],
-      "id": "a86a068a-6b06-40c2-b282-0118d07bad68",
-      "name": "Build Ecommerce Analytics Query"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Read the validated plan + fetched metric definition from the previous merge node.\nconst input = $input.first().json;\nconst metricDefinition = input.metric_definition;\nconst prepareInput = $(\"Prepare Input\").first().json;\n\n// Pull the normalized analysis plan into local variables.\nconst plan = input.plan || {};\nconst dataset = plan.dataset;\nconst analysisType = plan.analysis_type;\nconst metrics = Array.isArray(plan.metrics) ? plan.metrics : [];\nconst dimensions = Array.isArray(plan.dimensions) ? plan.dimensions : [];\nconst filters = Array.isArray(plan.filters) ? plan.filters : [];\nconst limit = Number(plan.limit || 0);\n\n// Return a controlled failure payload instead of allowing Postgres to run bad SQL.\nfunction fail(message) {\n  return [{\n    json: {\n      ...input,\n      route: \"invalid_plan\",\n      query_status: \"failed\",\n      errors: [...(input.errors || []), message]\n    }\n  }];\n}\n\n// This builder is intentionally dataset-specific for Phase 1.\nif (dataset !== \"marketing_campaigns\") {\n  return fail(`This query builder currently supports marketing_campaigns only. Got: ${dataset}`);\n}\n\n// The metric formula must come from metric_registry.\nif (!metricDefinition?.formula) {\n  return fail(`No metric definition was found for ${dataset}.${metrics[0] || \"unknown\"}`);\n}\n\nif (!metrics.length) {\n  return fail(\"No marketing metric was provided.\");\n}\n\nif (!dimensions.length) {\n  return fail(\"No marketing dimension was provided.\");\n}\n\nconst metric = metrics[0];\nconst dimension = dimensions[0];\n\nconst table = \"marketing_campaigns\";\nconst dateColumn = \"campaign_date\";\nconst metricSql = metricDefinition.formula;\n\n// Dimension names are allowlisted because they become SQL identifiers.\nconst allowedDimensions = {\n  channel: \"channel\",\n  region: \"region\",\n  country: \"country\",\n  audience_segment: \"audience_segment\",\n  device: \"device\",\n  campaign_objective: \"campaign_objective\",\n  campaign_status: \"campaign_status\"\n};\n\nif (!allowedDimensions[dimension]) {\n  return fail(`Unsupported marketing dimension: ${dimension}`);\n}\n\n// Phase 1 supports these deterministic query patterns only.\nconst supportedAnalysisTypes = [\n  \"grouped_metric_ranking\",\n  \"grouped_metric_breakdown\",\n  \"filtered_grouped_breakdown\",\n  \"dimension_comparison\"\n];\n\nif (!supportedAnalysisTypes.includes(analysisType)) {\n  return fail(`Unsupported marketing analysis type: ${analysisType}`);\n}\n\nconst dimensionSql = allowedDimensions[dimension];\n\n// Escape single quotes in filter values before placing them in SQL strings.\nfunction sqlString(value) {\n  return String(value).replace(/'/g, \"''\");\n}\n\n// Filtered and comparison questions must have at least one valid filter\n// for the same dimension being grouped.\nconst hasRequiredDimensionFilter = filters.some(filter => {\n  return (\n    filter.field === dimension &&\n    filter.operator === \"equals\" &&\n    filter.value !== undefined &&\n    filter.value !== null &&\n    String(filter.value).trim() !== \"\"\n  );\n});\n\nif (\n  (analysisType === \"filtered_grouped_breakdown\" ||\n    analysisType === \"dimension_comparison\") &&\n  !hasRequiredDimensionFilter\n) {\n  return fail(`Analysis type \"${analysisType}\" requires at least one valid filter on ${dimension}.`);\n}\n\n// Build the WHERE clause from safe dimension filters plus resolved date range.\nfunction buildWhereClause() {\n  const whereParts = [];\n\n  if (\n    analysisType === \"filtered_grouped_breakdown\" ||\n    analysisType === \"dimension_comparison\"\n  ) {\n    const relevantFilters = filters.filter(filter => {\n      return (\n        filter.field === dimension &&\n        filter.operator === \"equals\" &&\n        filter.value !== undefined &&\n        filter.value !== null &&\n        String(filter.value).trim() !== \"\"\n      );\n    });\n\n    if (relevantFilters.length) {\n      const values = relevantFilters.map(filter => `'${sqlString(filter.value)}'`);\n\n      if (values.length === 1) {\n        whereParts.push(`${dimensionSql} = ${values[0]}`);\n      } else {\n        whereParts.push(`${dimensionSql} IN (${values.join(\", \")})`);\n      }\n    }\n  }\n\n  // Date resolution happens before this node. If dates are present, apply them.\n  if (plan.date_range?.start && plan.date_range?.end) {\n    whereParts.push(\n      `${dateColumn} BETWEEN '${sqlString(plan.date_range.start)}'::date AND '${sqlString(plan.date_range.end)}'::date`\n    );\n  }\n\n  return whereParts.length ? `WHERE ${whereParts.join(\" AND \")}` : \"\";\n}\n\nconst whereClause = buildWhereClause();\n\n// Infer sort direction from the question/intent.\n// Most metrics rank descending, but \"lowest/cheapest\" should rank ascending.\nconst questionText = `${plan.intent || \"\"} ${input.user_question || prepareInput.user_question || \"\"}`.toLowerCase();\n\nconst wantsLowest = [\n  \"lowest\",\n  \"least\",\n  \"smallest\",\n  \"minimum\",\n  \"shortest\",\n  \"fastest\",\n  \"cheapest\",\n  \"lowest_cost\",\n  \"lowest cost\"\n].some(word => questionText.includes(word));\n\nconst sortDirection = wantsLowest ? \"ASC\" : \"DESC\";\n\n// Limit only applies to ranking questions, such as highest/top/lowest.\nconst limitClause =\n  analysisType === \"grouped_metric_ranking\" && limit > 0\n    ? `LIMIT ${limit}`\n    : \"\";\n\n// Use a stable SQL template:\n// base = filtered rows\n// grouped = metric by dimension\n// metadata = row count and date range for the full analysis base\nconst sql = `\nWITH base AS (\n  SELECT *\n  FROM ${table}\n  ${whereClause}\n),\ngrouped AS (\n  SELECT\n    ${dimensionSql} AS dimension_value,\n    COUNT(*) AS group_record_count,\n    ROUND((${metricSql})::numeric, 2) AS metric_value\n  FROM base\n  GROUP BY ${dimensionSql}\n),\nmetadata AS (\n  SELECT\n    COUNT(*) AS total_row_count,\n    MIN(${dateColumn})::text AS date_start,\n    MAX(${dateColumn})::text AS date_end\n  FROM base\n)\nSELECT\n  '${dataset}' AS dataset,\n  '${analysisType}' AS analysis_type,\n  '${metric}' AS metric,\n  '${dimension}' AS primary_dimension,\n  grouped.dimension_value,\n  grouped.group_record_count,\n  metadata.total_row_count,\n  metadata.date_start,\n  metadata.date_end,\n  grouped.metric_value\nFROM grouped\nCROSS JOIN metadata\nORDER BY grouped.metric_value ${sortDirection} NULLS LAST\n${limitClause};\n`;\n\n// Return SQL plus metadata needed by validation, response composition, and logging.\nreturn [{\n  json: {\n    ...input,\n    trace_id: input.trace_id || prepareInput.trace_id || $execution.id,\n    user_question: (\n      input.user_question ||\n      prepareInput.user_question ||\n      \"\"\n    ).trim(),\n    plan,\n    query_status: \"ready\",\n    sql,\n    query_metadata: {\n      dataset,\n      analysis_type: analysisType,\n      metric_display_name: metricDefinition.display_name,\n      metric_business_definition: metricDefinition.business_definition,\n      metrics,\n      dimensions,\n      filters,\n      requested_filter_values: filters\n        .filter(filter => filter.field === dimension && filter.operator === \"equals\")\n        .map(filter => String(filter.value)),\n      limit,\n      sort_direction: sortDirection.toLowerCase()\n    }\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2944,
-        752
-      ],
-      "id": "11eda48f-54c4-44a3-a6b9-20d3fcf90ae5",
-      "name": "Build Marketing Analytics Query"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "{{ $json.sql }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        3424,
-        736
-      ],
-      "id": "dbf561e9-7c08-4778-98df-892791c368c7",
-      "name": "Execute Marketing Analytics Query"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "{{ $json.sql }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        3408,
-        192
-      ],
-      "id": "55cbeec1-45f0-4419-8f64-7485baed639d",
-      "name": "Execute Ecommerce Analytics Query"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  metric_key,\n  dataset_name,\n  display_name,\n  formula,\n  business_definition\nFROM metric_registry\nWHERE dataset_name = '{{ $json.plan.dataset }}'\n  AND metric_key = '{{ $json.plan.metrics[0] }}'\nLIMIT 1;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        2512,
-        192
-      ],
-      "id": "dc4ffba6-061b-40a0-ae72-b8620f695ef4",
-      "name": "Fetch Ecommerce Metric Definition"
-    },
-    {
-      "parameters": {
-        "jsCode": "const metricDefinition = $input.first().json;\nconst planContext = $(\"Resolve Date Range\").first().json;\n\nreturn [{\n  json: {\n    ...planContext,\n    metric_definition: metricDefinition\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2736,
-        192
-      ],
-      "id": "d0174072-9208-4d55-9a81-f16c839736a2",
-      "name": "Merge Ecommerce Metric With Plan"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "841d5015-68f2-431e-b7dd-0961eb839dbe",
-              "leftValue": "={{ $json.query_status }}",
-              "rightValue": "ready",
-              "operator": {
-                "type": "string",
-                "operation": "equals",
-                "name": "filter.operator.equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        3184,
-        192
-      ],
-      "id": "5b93b3a3-59d5-4055-a86c-ec7f623eb40e",
-      "name": "Route Ecommerce Query Status"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  metric_key,\n  dataset_name,\n  display_name,\n  formula,\n  business_definition\nFROM metric_registry\nWHERE dataset_name = '{{ $json.plan.dataset }}'\n  AND metric_key = '{{ $json.plan.metrics[0] }}'\nLIMIT 1;",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        2496,
-        752
-      ],
-      "id": "82a6dc1c-6f9b-4931-a62d-640b7ea08345",
-      "name": "Fetch Marketing Metric Definition"
-    },
-    {
-      "parameters": {
-        "jsCode": "const metricDefinition = $input.first().json;\nconst planContext = $(\"Resolve Date Range\").first().json;\n\nreturn [{\n  json: {\n    ...planContext,\n    metric_definition: metricDefinition\n  }\n}];"
-      },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2720,
-        752
-      ],
-      "id": "7a7acee3-f0c2-4a6f-90f4-7f99e83b9f4f",
-      "name": "Merge Marketing Metric With Plan"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "841d5015-68f2-431e-b7dd-0961eb839dbe",
-              "leftValue": "={{ $json.query_status }}",
-              "rightValue": "ready",
-              "operator": {
-                "type": "string",
-                "operation": "equals",
-                "name": "filter.operator.equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        3168,
-        752
-      ],
-      "id": "73023abd-2f6e-402d-b982-101c059442e7",
-      "name": "Route Marketing Query Status"
     },
     {
       "parameters": {
@@ -822,10 +496,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1904,
-        1008
+        2464,
+        592
       ],
-      "id": "04b1398e-d91a-47f8-8aa7-0f00d9d4e30c",
+      "id": "4f610072-eeb1-471b-976f-50f000eed58c",
       "name": "Resolve Date Range"
     },
     {
@@ -835,208 +509,597 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        864,
-        1248
+        1584,
+        720
       ],
-      "id": "7bd21156-1ccf-4080-89d5-0285121d4e99",
+      "id": "20f6f1d4-90fb-49aa-8e6f-0586018d6c4c",
       "name": "Prepare Cache Payload"
     },
     {
       "parameters": {
-        "content": "## 1. Input and Business Catalog\n\nPurpose:\nPrepare the user question and attach the Phase 1 business catalog.\n\nResponsibilities:\n- Capture user question, session ID, source channel and trace ID.\n- Normalize the question for caching.\n- Attach supported datasets, metrics, dimensions, aliases and known values.\n- Keep Planner prompt small by moving business vocabulary into the catalog.\n\nOutput contract:\n- user_question\n- normalized_question\n- trace_id\n- session_id\n- business_catalog\n- catalog_version\n- question_hash",
-        "height": 432,
-        "width": 592
+        "operation": "executeQuery",
+        "query": "SELECT\n  metric_key,\n  dataset_name,\n  display_name,\n  formula,\n  business_definition\nFROM metric_registry\nWHERE dataset_name = '{{ $json.plan.dataset }}'\n  AND metric_key = '{{ $json.plan.metrics[0] }}'\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3344,
+        400
+      ],
+      "id": "5da27a50-b426-490c-b94b-69a8f9dcbaa5",
+      "name": "Fetch Metric Definition",
+      "credentials": {
+        "postgres": {
+          "id": "RECONNECT_SUPABASE_ANALYTICS_READER_CREDENTIAL_IN_N8N",
+          "name": "RECONNECT: Supabase analytics reader credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a deterministic SQL query from:\n// 1. the validated analysis plan\n// 2. dataset_metadata\n// 3. metric_registry metric definition\n//\n// The LLM does not write SQL. It only provides a structured plan.\n// This node turns that plan into an allowlisted SQL template.\n\nconst input = $input.first().json;\nconst prepareInput = $(\"Prepare Input\").first().json;\n\nconst plan = input.plan || {};\nconst datasetMetadata = input.dataset_metadata || {};\nconst metricDefinition = input.metric_definition || {};\n\nconst dataset = plan.dataset;\nconst analysisType = plan.analysis_type;\nconst metrics = Array.isArray(plan.metrics) ? plan.metrics : [];\nconst dimensions = Array.isArray(plan.dimensions) ? plan.dimensions : [];\nconst filters = Array.isArray(plan.filters) ? plan.filters : [];\nconst limit = Number(plan.limit || 0);\n\nfunction fail(message) {\n  return [{\n    json: {\n      ...input,\n      route: \"invalid_plan\",\n      query_status: \"failed\",\n      errors: [...(input.errors || []), message]\n    }\n  }];\n}\n\nfunction sqlString(value) {\n  return String(value).replace(/'/g, \"''\");\n}\n\nfunction isSafeIdentifier(value) {\n  return typeof value === \"string\" && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value);\n}\n\n// Required context checks.\nif (!dataset) {\n  return fail(\"No dataset was provided.\");\n}\n\nif (!datasetMetadata.dataset_name) {\n  return fail(`No dataset metadata was found for ${dataset}.`);\n}\n\nif (datasetMetadata.dataset_name !== dataset) {\n  return fail(\n    `Dataset metadata mismatch. Plan dataset is ${dataset}, metadata is ${datasetMetadata.dataset_name}.`\n  );\n}\n\nif (!metricDefinition.formula) {\n  return fail(`No metric definition was found for ${dataset}.${metrics[0] || \"unknown\"}.`);\n}\n\nif (metricDefinition.dataset_name !== dataset) {\n  return fail(\n    `Metric definition mismatch. Plan dataset is ${dataset}, metric dataset is ${metricDefinition.dataset_name}.`\n  );\n}\n\nif (!metrics.length) {\n  return fail(\"No metric was provided.\");\n}\n\nif (!dimensions.length) {\n  return fail(\"No dimension was provided.\");\n}\n\nconst metric = metrics[0];\nconst dimension = dimensions[0];\n\nif (metricDefinition.metric_key !== metric) {\n  return fail(\n    `Metric definition mismatch. Plan metric is ${metric}, fetched metric is ${metricDefinition.metric_key}.`\n  );\n}\n\nconst table = datasetMetadata.table_name;\nconst dateColumn = datasetMetadata.date_column;\nconst dimensionMap = datasetMetadata.dimensions || {};\nconst supportedAnalysisTypes = datasetMetadata.supported_analysis_types || [];\n\nif (!isSafeIdentifier(table)) {\n  return fail(`Unsafe table name in dataset metadata: ${table}`);\n}\n\nif (!isSafeIdentifier(dateColumn)) {\n  return fail(`Unsafe date column in dataset metadata: ${dateColumn}`);\n}\n\nif (!supportedAnalysisTypes.includes(analysisType)) {\n  return fail(`Unsupported analysis type for ${dataset}: ${analysisType}`);\n}\n\nconst dimensionSql = dimensionMap[dimension];\n\nif (!dimensionSql) {\n  return fail(`Unsupported dimension for ${dataset}: ${dimension}`);\n}\n\nif (!isSafeIdentifier(dimensionSql)) {\n  return fail(`Unsafe dimension column in dataset metadata: ${dimensionSql}`);\n}\n\nconst metricSql = metricDefinition.formula;\n\n// Filtered and comparison questions must have at least one valid equals filter\n// on the same dimension being grouped.\nconst requiresDimensionFilter =\n  analysisType === \"filtered_grouped_breakdown\" ||\n  analysisType === \"dimension_comparison\";\n\nconst relevantFilters = filters.filter(filter => {\n  return (\n    filter.field === dimension &&\n    filter.operator === \"equals\" &&\n    filter.value !== undefined &&\n    filter.value !== null &&\n    String(filter.value).trim() !== \"\"\n  );\n});\n\nif (requiresDimensionFilter && relevantFilters.length === 0) {\n  return fail(`Analysis type \"${analysisType}\" requires at least one valid filter on ${dimension}.`);\n}\n\nfunction buildWhereClause() {\n  const whereParts = [];\n\n  if (requiresDimensionFilter && relevantFilters.length) {\n    const values = relevantFilters.map(filter => `'${sqlString(filter.value)}'`);\n\n    if (values.length === 1) {\n      whereParts.push(`${dimensionSql} = ${values[0]}`);\n    } else {\n      whereParts.push(`${dimensionSql} IN (${values.join(\", \")})`);\n    }\n  }\n\n  if (plan.date_range && plan.date_range.start && plan.date_range.end) {\n    whereParts.push(\n      `${dateColumn} BETWEEN '${sqlString(plan.date_range.start)}'::date AND '${sqlString(plan.date_range.end)}'::date`\n    );\n  }\n\n  return whereParts.length ? `WHERE ${whereParts.join(\" AND \")}` : \"\";\n}\n\nconst whereClause = buildWhereClause();\n\nconst questionText = `${plan.intent || \"\"} ${input.user_question || prepareInput.user_question || \"\"}`.toLowerCase();\n\nconst wantsLowest = [\n  \"lowest\",\n  \"least\",\n  \"smallest\",\n  \"minimum\",\n  \"shortest\",\n  \"fastest\",\n  \"cheapest\",\n  \"lowest_cost\",\n  \"lowest cost\"\n].some(word => questionText.includes(word));\n\n// Some metrics are naturally better when lower.\nconst naturallyAscendingMetrics = [\n  \"average_delivery_days\",\n  \"cost_per_click\",\n  \"cost_per_conversion\"\n];\n\nconst sortDirection =\n  wantsLowest || naturallyAscendingMetrics.includes(metric)\n    ? \"ASC\"\n    : \"DESC\";\n\nconst limitClause =\n  analysisType === \"grouped_metric_ranking\" && limit > 0\n    ? `LIMIT ${limit}`\n    : \"\";\n\nconst sql = `\nWITH base AS (\n  SELECT *\n  FROM ${table}\n  ${whereClause}\n),\ngrouped AS (\n  SELECT\n    ${dimensionSql} AS dimension_value,\n    COUNT(*) AS group_record_count,\n    ROUND((${metricSql})::numeric, 2) AS metric_value\n  FROM base\n  GROUP BY ${dimensionSql}\n),\nmetadata AS (\n  SELECT\n    COUNT(*) AS total_row_count,\n    MIN(${dateColumn})::text AS date_start,\n    MAX(${dateColumn})::text AS date_end\n  FROM base\n),\nfinal_rows AS (\n  SELECT\n    '${dataset}' AS dataset,\n    '${analysisType}' AS analysis_type,\n    '${metric}' AS metric,\n    '${dimension}' AS primary_dimension,\n    grouped.dimension_value,\n    grouped.group_record_count,\n    metadata.total_row_count,\n    metadata.date_start,\n    metadata.date_end,\n    grouped.metric_value\n  FROM grouped\n  CROSS JOIN metadata\n\n  UNION ALL\n\n  SELECT\n    '${dataset}' AS dataset,\n    '${analysisType}' AS analysis_type,\n    '${metric}' AS metric,\n    '${dimension}' AS primary_dimension,\n    NULL AS dimension_value,\n    0 AS group_record_count,\n    metadata.total_row_count,\n    metadata.date_start,\n    metadata.date_end,\n    NULL AS metric_value\n  FROM metadata\n  WHERE NOT EXISTS (SELECT 1 FROM grouped)\n)\nSELECT *\nFROM final_rows\nORDER BY metric_value ${sortDirection} NULLS LAST\n${limitClause};\n`;\n\nreturn [{\n  json: {\n    ...input,\n    trace_id: input.trace_id || prepareInput.trace_id || $execution.id,\n    user_question: (\n      input.user_question ||\n      prepareInput.user_question ||\n      \"\"\n    ).trim(),\n    plan,\n    query_status: \"ready\",\n    sql,\n    query_metadata: {\n      dataset,\n      table,\n      date_column: dateColumn,\n      analysis_type: analysisType,\n      metric_display_name: metricDefinition.display_name,\n      metric_business_definition: metricDefinition.business_definition,\n      metrics,\n      dimensions,\n      filters,\n      requested_filter_values: relevantFilters.map(filter => String(filter.value)),\n      limit,\n      sort_direction: sortDirection.toLowerCase()\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4016,
+        400
+      ],
+      "id": "6c9d9582-cbb2-4579-9231-055783b172c5",
+      "name": "Build Analytics Query"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4800,
+        384
+      ],
+      "id": "ebd9e5f7-eff5-4f8d-9a84-3036978fb069",
+      "name": "Execute Analytics Query",
+      "credentials": {
+        "postgres": {
+          "id": "RECONNECT_SUPABASE_ANALYTICS_READER_CREDENTIAL_IN_N8N",
+          "name": "RECONNECT: Supabase analytics reader credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  dataset_name,\n  display_name,\n  description,\n  table_name,\n  date_column,\n  dimensions,\n  dimension_aliases,\n  known_values,\n  supported_analysis_types\nfrom dataset_metadata\nwhere dataset_name = '{{ $json.plan.dataset }}'\n  and is_active = true\nlimit 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2896,
+        400
+      ],
+      "id": "0062ee9f-67ee-42dd-8880-d28b174d09a3",
+      "name": "Fetch Dataset Metadata",
+      "credentials": {
+        "postgres": {
+          "id": "RECONNECT_SUPABASE_ANALYTICS_READER_CREDENTIAL_IN_N8N",
+          "name": "RECONNECT: Supabase analytics reader credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const datasetMetadata = $input.first().json;\n\nfunction getNodeJson(nodeName) {\n  try {\n    return $(nodeName).first().json;\n  } catch (error) {\n    return null;\n  }\n}\n\nconst planContext =\n  getNodeJson(\"Resolve Date Range\") ||\n  getNodeJson(\"Validate Analysis Plan\") ||\n  {};\n\nif (!planContext.plan) {\n  return [{\n    json: {\n      route: \"invalid_plan\",\n      query_status: \"failed\",\n      errors: [\"Could not find validated plan context after fetching dataset metadata.\"],\n      dataset_metadata: datasetMetadata\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...planContext,\n    dataset_metadata: datasetMetadata\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        400
+      ],
+      "id": "8144a918-9674-4baa-a50d-0e422ab6b8d4",
+      "name": "Merge Dataset Metadata With Plan"
+    },
+    {
+      "parameters": {
+        "jsCode": "const metricDefinition = $input.first().json;\n\nfunction getNodeJson(nodeName) {\n  try {\n    return $(nodeName).first().json;\n  } catch (error) {\n    return null;\n  }\n}\n\n// This node must restore the context from the immediately previous context merge,\n// because that is where dataset_metadata was attached.\nconst context =\n  getNodeJson(\"Merge Dataset Metadata With Plan\") ||\n  getNodeJson(\"Resolve Date Range\") ||\n  getNodeJson(\"Validate Analysis Plan\") ||\n  {};\n\nif (!context.plan) {\n  return [{\n    json: {\n      route: \"invalid_plan\",\n      query_status: \"failed\",\n      errors: [\"Could not find plan context after fetching metric definition.\"],\n      metric_definition: metricDefinition\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...context,\n    metric_definition: metricDefinition\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3568,
+        400
+      ],
+      "id": "406a4af6-3c56-44df-87a3-2bef4e2e782c",
+      "name": "Merge Metric Definition With Context"
+    },
+    {
+      "parameters": {
+        "jsCode": "function getNodeJson(nodeName) {\n  try {\n    return $(nodeName).first().json;\n  } catch (error) {\n    return null;\n  }\n}\n\nconst queryContext = $(\"Build Analytics Query\").first().json;\n\nconst rows = $input.all().map(item => item.json);\n\nconst plan = queryContext.plan || {};\nconst queryMetadata = queryContext.query_metadata || {};\n\nconst dataset = queryMetadata.dataset || plan.dataset || \"unknown\";\nconst analysisType = queryMetadata.analysis_type || plan.analysis_type || \"unknown\";\n\nconst metrics = Array.isArray(queryMetadata.metrics)\n  ? queryMetadata.metrics\n  : Array.isArray(plan.metrics)\n    ? plan.metrics\n    : [];\n\nconst dimensions = Array.isArray(queryMetadata.dimensions)\n  ? queryMetadata.dimensions\n  : Array.isArray(plan.dimensions)\n    ? plan.dimensions\n    : [];\n\nconst primaryMetric = metrics[0] || null;\nconst primaryDimension = dimensions[0] || null;\nconst dateRange = plan.date_range || {};\n\n// Ratio metrics can return null when their denominator is zero or missing.\nconst ratioMetrics = [\n  \"return_rate\",\n  \"ctr\",\n  \"conversion_rate\",\n  \"cost_per_click\",\n  \"cost_per_conversion\",\n  \"roas\",\n  \"revenue_per_click\",\n  \"lead_to_customer_rate\"\n];\n\nconst requestedValuesFromMetadata = Array.isArray(queryMetadata.requested_filter_values)\n  ? queryMetadata.requested_filter_values.map(value => String(value))\n  : [];\n\nconst requestedValuesFromPlan = Array.isArray(plan.filters)\n  ? plan.filters\n      .filter(filter => {\n        return (\n          filter.field === primaryDimension &&\n          filter.operator === \"equals\" &&\n          filter.value !== undefined &&\n          filter.value !== null &&\n          String(filter.value).trim() !== \"\"\n        );\n      })\n      .map(filter => String(filter.value))\n  : [];\n\nconst requestedValues = requestedValuesFromMetadata.length\n  ? requestedValuesFromMetadata\n  : requestedValuesFromPlan;\n\nconst noRecordsWarning = requestedValues.length\n  ? `No matching records found for ${requestedValues.join(\", \")}`\n  : dateRange.start && dateRange.end\n    ? `No records were found for the resolved date range ${dateRange.start} to ${dateRange.end}.`\n    : \"No records were found for this analysis.\";\n\n// Empty results mean the requested filter or dataset slice has no usable data.\nif (!rows.length) {\n  return [{\n    json: {\n      trace_id: queryContext.trace_id || null,\n      user_question: queryContext.user_question || \"\",\n      plan,\n      dataset,\n      analysis_type: analysisType,\n      metrics,\n      dimensions,\n      dimension: primaryDimension,\n      row_count: 0,\n      group_record_count: 0,\n      date_start: dateRange.start || null,\n      date_end: dateRange.end || null,\n      warnings: [noRecordsWarning],\n      status: \"failed\",\n      response_type: \"controlled_failure\",\n      results: []\n    }\n  }];\n}\n\nconst first = rows[0];\n\n// Metadata-only zero-row results happen when the SQL has no matching base rows.\nconst hasZeroRows = Number(first.total_row_count || 0) === 0;\n\nif (hasZeroRows) {\n  return [{\n    json: {\n      trace_id: queryContext.trace_id || null,\n      user_question: queryContext.user_question || \"\",\n      plan,\n      dataset,\n      analysis_type: analysisType,\n      metrics,\n      dimensions,\n      dimension: primaryDimension,\n      row_count: 0,\n      group_record_count: 0,\n      date_start: dateRange.start || null,\n      date_end: dateRange.end || null,\n      warnings: [noRecordsWarning],\n      status: \"failed\",\n      response_type: \"controlled_failure\",\n      results: []\n    }\n  }];\n}\n\nconst warnings = [];\n\n// For comparison questions, make sure every requested value came back.\n// Example: Email exists but Paid Social does not, so we should not answer.\nconst returnedValues = rows.map(row => String(row.dimension_value));\n\nconst missingValues = requestedValues.filter(value => {\n  return !returnedValues.includes(String(value));\n});\n\nif (missingValues.length) {\n  warnings.push(`No matching records found for ${missingValues.join(\", \")}`);\n}\n\n// Null metric values usually mean the formula could not be calculated.\nconst hasNullMetricValue = rows.some(row => {\n  return row.metric_value === null || row.metric_value === undefined;\n});\n\nif (hasNullMetricValue && ratioMetrics.includes(primaryMetric)) {\n  warnings.push(\n    `The metric \"${primaryMetric}\" could not be calculated because the denominator was zero or missing.`\n  );\n} else if (hasNullMetricValue) {\n  warnings.push(\"The selected metric returned no value.\");\n}\n\n// Missing dates are not always fatal, but the answer should carry a warning.\nconst hasMissingDateRange = rows.some(row => {\n  return !row.date_start || !row.date_end;\n});\n\nif (hasMissingDateRange) {\n  warnings.push(\"The result does not include a complete date range.\");\n}\n\nconst totalRowCount = Number(\n  first.total_row_count ||\n  rows.reduce((sum, row) => {\n    return sum + Number(row.group_record_count || row.record_count || 0);\n  }, 0)\n);\n\nconst groupRecordCount = Number(\n  first.group_record_count ||\n  first.record_count ||\n  0\n);\n\n// Critical issues mean the system should not return a normal analytical answer.\nconst hasMissingComparisonValues =\n  analysisType === \"dimension_comparison\" && missingValues.length > 0;\n\nconst hasCriticalDataQualityIssue =\n  hasMissingComparisonValues || hasNullMetricValue;\n\nconst status = hasCriticalDataQualityIssue\n  ? \"failed\"\n  : warnings.length\n    ? \"success_with_warnings\"\n    : \"success\";\n\nconst responseType = hasCriticalDataQualityIssue\n  ? \"controlled_failure\"\n  : \"analytics_result\";\n\nreturn [{\n  json: {\n    trace_id: queryContext.trace_id || null,\n    user_question: queryContext.user_question || \"\",\n    plan,\n    dataset,\n    analysis_type: analysisType,\n    metrics,\n    dimensions,\n    dimension: primaryDimension,\n    row_count: totalRowCount,\n    group_record_count: groupRecordCount,\n    date_start: first.date_start || null,\n    date_end: first.date_end || null,\n    warnings,\n    status,\n    response_type: responseType,\n    results: hasCriticalDataQualityIssue ? [] : rows\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5168,
+        400
+      ],
+      "id": "e649d682-cda3-4151-9bfa-843a28458496",
+      "name": "Validate Analytics Result"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e8a7a1b4-a102-4def-a5bf-d0a6bb323085",
+                    "leftValue": "={{ $json.plan_valid}}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "supported_analytics"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "4979ac08-a019-4138-9063-de9c9c320257",
+                    "leftValue": "={{ $json.plan_valid }}",
+                    "rightValue": "false",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "false",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "controlled_response"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        2672,
+        592
+      ],
+      "id": "71273d18-712e-4c63-9545-bada849f4b4d",
+      "name": "Route Execution Type"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nconst headers = input.headers || {};\nconst body = input.body || {};\n\nconst question = String(\n  body.message ||\n  body.user_question ||\n  body.question ||\n  body.chatInput ||\n  \"\"\n).trim();\n\nconst sessionId = body.session_id || null;\n\nconst errors = [];\nconst warnings = [];\nconst securitySignals = [];\n\n// Optional auth check.\n// For now this only runs if AGENT_WEBHOOK_TOKEN is configured in n8n variables.\nconst expectedToken = $vars.AGENT_WEBHOOK_TOKEN || \"\";\nconst receivedToken =\n  headers[\"x-agent-token\"] ||\n  headers[\"X-Agent-Token\"] ||\n  body.webhook_token ||\n  \"\";\n\nif (expectedToken && receivedToken !== expectedToken) {\n  errors.push(\"Unauthorized request.\");\n  securitySignals.push(\"auth_failed\");\n}\n\n// Basic input validation\nif (!question) {\n  errors.push(\"Missing user question.\");\n  securitySignals.push(\"missing_question\");\n}\n\nif (question.length > 1000) {\n  errors.push(\"Question is too long.\");\n  securitySignals.push(\"question_too_long\");\n}\n\nif (question.length > 0 && question.length < 2) {\n  errors.push(\"Question is too short.\");\n  securitySignals.push(\"question_too_short\");\n}\n\n// Prompt injection and unsafe database intent detection\nconst lowerQuestion = question.toLowerCase();\n\nconst injectionPatterns = [\n  /ignore (all )?(previous|prior|above) instructions/,\n  /disregard (all )?(previous|prior|above) instructions/,\n  /forget (all )?(previous|prior|above) instructions/,\n  /reveal (the )?(system|developer) prompt/,\n  /show (me )?(the )?(system|developer) prompt/,\n  /print (the )?(system|developer) prompt/,\n  /developer mode/,\n  /jailbreak/,\n  /bypass (the )?(rules|policy|guardrails|safety)/,\n  /do not follow (the )?(rules|instructions|policy)/,\n  /execute raw sql/,\n  /run sql/,\n  /drop table/,\n  /delete from/,\n  /truncate table/,\n  /alter table/,\n  /update .+ set/,\n  /insert into/,\n  /grant .+ on/,\n  /revoke .+ on/\n];\n\nif (injectionPatterns.some(pattern => pattern.test(lowerQuestion))) {\n  const message = \"Potential prompt injection or unsafe database instruction detected.\";\n  errors.push(message);\n  warnings.push(message);\n  securitySignals.push(\"prompt_injection_detected\");\n}\n\n// Secret extraction detection\nconst secretPatterns = [\n  /api[_\\s-]?key/,\n  /access[_\\s-]?token/,\n  /refresh[_\\s-]?token/,\n  /database password/,\n  /db password/,\n  /connection string/,\n  /supabase key/,\n  /openai key/,\n  /credential/,\n  /secret/\n];\n\nif (secretPatterns.some(pattern => pattern.test(lowerQuestion))) {\n  const message = \"Request appears to ask for secrets or credentials.\";\n  errors.push(message);\n  warnings.push(message);\n  securitySignals.push(\"secret_extraction_attempt\");\n}\n\n// Lightweight PII detection\nconst piiPatterns = [\n  {\n    name: \"email\",\n    pattern: /\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/i\n  },\n  {\n    name: \"phone_number\",\n    pattern: /(\\+?\\d[\\d\\s().-]{7,}\\d)/\n  },\n  {\n    name: \"credit_card_like_number\",\n    pattern: /\\b(?:\\d[ -]*?){13,19}\\b/\n  },\n  {\n    name: \"ssn_like_number\",\n    pattern: /\\b\\d{3}-\\d{2}-\\d{4}\\b/\n  }\n];\n\nfor (const pii of piiPatterns) {\n  if (pii.pattern.test(question)) {\n    warnings.push(`Potential PII detected: ${pii.name}.`);\n    securitySignals.push(`pii_${pii.name}`);\n  }\n}\n\nconst piiDetected = securitySignals.some(signal => signal.startsWith(\"pii_\"));\n\nif (piiDetected) {\n  errors.push(\"Request contains potential personal or sensitive information.\");\n}\n\n// If blocked, return controlled failure payload\nif (errors.length) {\n  return [{\n    json: {\n      trace_id: input.trace_id || $execution.id,\n      session_id: sessionId,\n      user_question: question,\n      route: \"security_blocked\",\n      status: \"security_blocked\",\n      response_type: \"controlled_failure\",\n      selected_dataset: \"unknown\",\n      dataset: \"unknown\",\n      metrics: [],\n      analysis_type: \"unknown\",\n      row_count: 0,\n      date_start: null,\n      date_end: null,\n      errors,\n      warnings,\n      security_signals: securitySignals\n    }\n  }];\n}\n\n// If safe, normalize into the shape the rest of your workflow expects\nreturn [{\n  json: {\n    ...input,\n    session_id: sessionId,\n    user_question: question,\n    source_channel: \"streamlit\",\n    route: \"safe_request\",\n    security_checked: true,\n    warnings: warnings.length ? warnings : errors,\n    security_signals: securitySignals\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1056,
+        752
+      ],
+      "id": "60230c2c-117b-45d8-8495-302ca50398f6",
+      "name": "Request Guard"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nconst plan = input.plan || {};\nconst datasetMetadata = input.dataset_metadata || {};\nconst metricDefinition = input.metric_definition || {};\n\nconst errors = [];\n\nconst dataset = plan.dataset;\nconst metrics = Array.isArray(plan.metrics) ? plan.metrics : [];\nconst dimensions = Array.isArray(plan.dimensions) ? plan.dimensions : [];\nconst filters = Array.isArray(plan.filters) ? plan.filters : [];\n\nconst allowedDimensions = toAllowedList(datasetMetadata.dimensions);\n\nfunction toAllowedList(value) {\n  if (Array.isArray(value)) {\n    return value;\n  }\n\n  if (value && typeof value === \"object\") {\n    return Object.keys(value);\n  }\n\n  return [];\n}\n\nconst allowedDateColumn = datasetMetadata.date_column;\n\nif (!datasetMetadata.dataset_name) {\n  errors.push(\"Dataset metadata was not found.\");\n}\n\nif (!metricDefinition.metric_key) {\n  errors.push(\"Metric definition was not found.\");\n}\n\nif (\n  metricDefinition.dataset_name &&\n  metricDefinition.dataset_name !== dataset\n) {\n  errors.push(\"Metric definition does not belong to the selected dataset.\");\n}\n\nfor (const metric of metrics) {\n  if (metric !== metricDefinition.metric_key) {\n    errors.push(`Metric \"${metric}\" does not match the approved metric definition.`);\n  }\n}\n\nfor (const dimension of dimensions) {\n  if (!allowedDimensions.includes(dimension)) {\n    errors.push(`Dimension \"${dimension}\" is not approved for ${dataset}.`);\n  }\n}\n\nfor (const filter of filters) {\n  if (!allowedDimensions.includes(filter.field)) {\n    errors.push(`Filter field \"${filter.field}\" is not approved for ${dataset}.`);\n  }\n}\n\nif (\n  plan.date_range &&\n  plan.date_range.date_column &&\n  plan.date_range.date_column !== allowedDateColumn\n) {\n  errors.push(`Date column \"${plan.date_range.date_column}\" is not approved for ${dataset}.`);\n}\n\nif (errors.length) {\n  return [{\n    json: {\n      ...input,\n      route: \"invalid_plan\",\n      query_status: \"failed\",\n      status: \"invalid_plan\",\n      response_type: \"controlled_failure\",\n      errors,\n      warnings: errors\n    }\n  }];\n}\n\nreturn [{\n  json: input\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3792,
+        400
+      ],
+      "id": "0ebab849-f897-4f63-8d8b-ecbf415bb0b7",
+      "name": "Metadata Authorization Guard"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst sql = String(input.sql || \"\").trim();\n\nconst errors = [];\n\nconst forbidden = [\n  /\\binsert\\b/i,\n  /\\bupdate\\b/i,\n  /\\bdelete\\b/i,\n  /\\bdrop\\b/i,\n  /\\balter\\b/i,\n  /\\btruncate\\b/i,\n  /\\bcreate\\b/i,\n  /\\bgrant\\b/i,\n  /\\brevoke\\b/i,\n  /--/,\n  /\\/\\*/,\n  /\\*\\//\n];\n\nif (!sql) {\n  errors.push(\"SQL query is missing.\");\n}\n\nif (!/^(with|select)\\b/i.test(sql)) {\n  errors.push(\"Only SELECT or WITH queries are allowed.\");\n}\n\nif (forbidden.some(pattern => pattern.test(sql))) {\n  errors.push(\"SQL contains a forbidden operation or comment pattern.\");\n}\n\nif ((sql.match(/;/g) || []).length > 1) {\n  errors.push(\"SQL must contain only one statement.\");\n}\n\nif (errors.length) {\n  return [{\n    json: {\n      ...input,\n      query_status: \"failed\",\n      route: \"invalid_plan\",\n      status: \"invalid_plan\",\n      response_type: \"controlled_failure\",\n      errors,\n      warnings: errors\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...input,\n    query_status: input.query_status || \"ready\"\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4240,
+        400
+      ],
+      "id": "971cd416-1ffe-4e6b-b8b5-78007b3a64fd",
+      "name": "SQL Safety Guard"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nconst response = String(input.output || input.response || \"\").trim();\nconst lower = response.toLowerCase();\n\nconst errors = [];\nconst warnings = [];\n\n// 1. Response must not be empty.\nif (!response) {\n  errors.push(\"Response is empty.\");\n}\n\n// 2. Successful analytics-style answers should include source details.\n// Controlled failures may not include Source, so this is only a warning.\nconst looksLikeAnalyticsAnswer =\n  /\\b(source:)\\b/i.test(response) ||\n  /\\brecords\\b/i.test(response) ||\n  /\\bnet sales\\b/i.test(lower) ||\n  /\\broas\\b/i.test(lower) ||\n  /\\brevenue\\b/i.test(lower) ||\n  /\\bconversion rate\\b/i.test(lower) ||\n  /\\border count\\b/i.test(lower);\n\nif (looksLikeAnalyticsAnswer && !/source:/i.test(response)) {\n  errors.push(\"Analytics response is missing source details.\");\n}\n\n// 3. Block internal implementation details.\nconst forbiddenInternalTerms = [\n  \"sql query\",\n  \"postgres query\",\n  \"workflow node\",\n  \"n8n node\",\n  \"system prompt\",\n  \"developer prompt\",\n  \"tool call\",\n  \"raw payload\",\n  \"credential\",\n  \"database password\",\n  \"api key\",\n  \"access token\",\n  \"refresh token\",\n  \"connection string\"\n];\n\nfor (const term of forbiddenInternalTerms) {\n  if (lower.includes(term)) {\n    errors.push(`Response contains internal or sensitive term: ${term}.`);\n  }\n}\n\n// 4. Block obvious secret-like strings.\nconst secretPatterns = [\n  /sk-[a-zA-Z0-9]{20,}/,\n  /xox[baprs]-[a-zA-Z0-9-]{10,}/,\n  /ghp_[a-zA-Z0-9]{20,}/,\n  /eyJ[a-zA-Z0-9_-]{20,}/,\n  /postgres:\\/\\/[^ \\n]+/i,\n  /api[_-]?key\\s*[:=]/i,\n  /access[_-]?token\\s*[:=]/i,\n  /refresh[_-]?token\\s*[:=]/i\n];\n\nif (secretPatterns.some(pattern => pattern.test(response))) {\n  errors.push(\"Response appears to contain a secret or credential.\");\n}\n\n// 5. Block sensitive source-column mentions.\n// Your final answer should not mention raw identity fields.\nconst sensitiveFields = [\n  \"customer_id\",\n  \"customer_name\",\n  \"email\",\n  \"phone\",\n  \"address\",\n  \"password\",\n  \"token\",\n  \"secret\"\n];\n\nfor (const field of sensitiveFields) {\n  if (lower.includes(field)) {\n    errors.push(`Response mentions sensitive field: ${field}.`);\n  }\n}\n\n// 6. Flag unsupported causal language.\n// This protects against the model inventing reasons.\nconst unsupportedCausalPhrases = [\n  \"because customers\",\n  \"because users\",\n  \"due to customer preference\",\n  \"caused by\",\n  \"the reason is\",\n  \"this happened because\",\n  \"driven by\"\n];\n\nfor (const phrase of unsupportedCausalPhrases) {\n  if (lower.includes(phrase)) {\n    warnings.push(`Response may contain unsupported causal language: ${phrase}.`);\n  }\n}\n\n// 7. Keep final answer concise enough for the UI.\nif (response.length > 2000) {\n  warnings.push(\"Response is unusually long for the chat UI.\");\n}\n\n// If unsafe, replace with controlled safe response.\nif (errors.length) {\n  return [{\n    json: {\n      output: \"I could not return a safe response for this request.\",\n      response: \"I could not return a safe response for this request.\",\n      status: \"response_blocked\",\n      response_type: \"controlled_failure\",\n      errors,\n      warnings\n    }\n  }];\n}\n\n// If safe, pass through final text.\nreturn [{\n  json: {\n    output: response,\n    response,\n    status: warnings.length ? \"success_with_warnings\" : \"success\",\n    response_safety_warnings: warnings\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6048,
+        368
+      ],
+      "id": "c8c9a949-3593-49eb-9a01-e9d336e5ba63",
+      "name": "Response Safety Guard"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.plan_source }}",
+                    "rightValue": "cache",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e956c068-4843-4f4a-871b-899b7d7c8a67"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Cache"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a9d76bd4-f30a-4d31-b7df-1282767a958c",
+                    "leftValue": "={{ $json.plan_source }}",
+                    "rightValue": "=planner",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Planner Agent"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1312,
+        624
+      ],
+      "id": "d8001f31-add8-42e2-9fda-3ad1ac901b26",
+      "name": "Switch: Plan Source"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.query_status }}",
+                    "rightValue": "ready",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "0fa258e9-927c-42cc-893b-0d48287d8368"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ready"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7080148e-34ea-485c-a397-26940e3fc221",
+                    "leftValue": "{{ $json.query_status }}",
+                    "rightValue": "failed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 0
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        4528,
+        400
+      ],
+      "id": "daa5d15e-5263-4cc5-b57d-d295805ae0b7",
+      "name": "Route Query Status"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "=safe_request",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "4c4e7fdd-385a-4e53-b737-dbe9d4bf7a6c"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "safe request"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e1619d19-fe13-4f6f-923a-bc4eac18af4b",
+                    "leftValue": "={{ $json.route || \"\" }}",
+                    "rightValue": "security_blocked",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "security blocked"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -832,
+        752
+      ],
+      "id": "8fdebbc3-46e3-462d-8197-e44a915eeb0a",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "content": "## 1. Request Entry & Input Guard\n\nPurpose:\nReceives the user question and rejects unsafe or malformed requests before any AI or database work runs.\n\nIncludes:\n- Webhook\n- Request Guard\n- input normalization\n\nSecurity role:\n- validates required fields\n- checks request size\n- blocks obvious secret-extraction or destructive requests\n- prevents unnecessary model/token usage\n\nDesign principle:\nUntrusted input must be cleaned and checked before it reaches the planner.",
+        "height": 464,
+        "width": 832
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -1296,
-        784
+        -1328,
+        128
       ],
       "typeVersion": 1,
-      "id": "cb493ec1-a91b-4dce-abab-c98bcf185df6",
+      "id": "3977a1b4-ad9b-461f-9c91-a6a301af514d",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## 2. Planning, Cache & Structured Intent\n\nPurpose:\nTurns the natural-language question into a structured analysis plan.\n\nIncludes:\n- Planner Agent\n- planner cache lookup\n- cache hit / cache miss handling\n- structured output parser\n\nPlanner responsibility:\nThe planner proposes intent, dataset, metric, dimension, filters, dates, and analysis type.\n\nImportant:\nPlanner output is not trusted yet. It is only a draft plan until validation approves it.",
+        "height": 416,
+        "width": 1104
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -160,
+        48
+      ],
+      "typeVersion": 1,
+      "id": "fef9e75f-d169-46b4-8947-9f034de8fc91",
       "name": "Sticky Note3"
     },
     {
       "parameters": {
-        "content": "## 2. Planner and Cache\n\nPurpose:\nCreate or reuse a structured analysis plan.\n\nResponsibilities:\n- Check whether a matching planner result exists in cache.\n- On cache hit, restore the cached unresolved plan.\n- On cache miss, call the Planner Agent.\n- Save reusable planner outputs before date resolution.\n- Cache relative periods as labels, not fixed dates.\n\nImportant:\nCached plans should store relative_period such as last_month, not resolved start/end dates.\n\nOutput contract:\n- plan\n- plan_valid\n- route\n- cache_hit or cache_saved",
-        "height": 400,
-        "width": 704
+        "content": "## 3. Plan Validation & Date Resolution\n\nPurpose:\nValidates and canonicalizes the planner output before execution.\n\nIncludes:\n- Validate Analysis Plan\n- Resolve Date Range\n\nChecks:\n- supported route\n- approved dataset\n- approved metric\n- approved dimensions\n- approved filters\n- valid date column\n- bounded limits\n- relative dates converted into explicit start/end dates\n\nDesign principle:\nThe model may suggest a plan, but deterministic validation decides whether it can run.",
+        "height": 640,
+        "width": 1392
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        -432,
-        784
+        1184,
+        960
       ],
       "typeVersion": 1,
-      "id": "73f86ecf-0db4-4fbd-a8f5-565b1420b74c",
+      "id": "ee28c385-8121-4c20-a6bc-5b069bb272d8",
       "name": "Sticky Note4"
     },
     {
       "parameters": {
-        "content": "## 3. Validate Analysis Plan\n\nPurpose:\nTurn the Planner output into a safe, canonical Phase 1 plan.\n\nResponsibilities:\n- Normalize metric, dimension, dataset and analysis type keys.\n- Apply metric and field aliases from the business catalog.\n- Correct clear dataset mismatches using metric and dimension evidence.\n- Infer missing dimensions from valid filters.\n- Route unsupported, clarification and invalid plans before SQL.\n- Block unsupported metrics, dimensions and date columns.\n\nSafety rule:\nOnly validated canonical plans can reach analytics query builders.",
-        "height": 336,
-        "width": 640
+        "content": "## 4. Metadata Authorization Layer\n\nPurpose:\nFetches approved dataset metadata and verifies the plan against the database-backed business contract.\n\nIncludes:\n- Fetch Dataset Metadata\n- Merge Dataset Metadata With Plan\n- Metadata Authorization Guard\n- Fetch Metric Definition\n- Merge Metric Definition With Context\n\nSecurity role:\n- prevents unauthorized datasets or tables\n- verifies allowed dimensions and date columns\n- ensures metric formulas come from `metric_registry`\n- keeps SQL generation metadata-driven instead of hardcoded\n\nDesign principle:\nSupabase metadata is the source of truth for what the workflow is allowed to query.",
+        "height": 560,
+        "width": 1040
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        464,
-        1600
+        2864,
+        -208
       ],
       "typeVersion": 1,
-      "id": "239300ad-90a1-47cd-add4-c41b12192e6a",
+      "id": "6d7eb941-50fa-4857-9acd-38e40b20dc68",
       "name": "Sticky Note5"
     },
     {
       "parameters": {
-        "content": "## 4. Resolve Date Range\n\nPurpose:\nConvert relative date periods into explicit SQL-safe dates.\n\nResponsibilities:\n- Resolve this_month, last_month, this_quarter, last_quarter, this_year, last_year and year_to_date.\n- Run after cache hit and cache miss paths.\n- Preserve relative_period for traceability.\n- Add resolved start/end dates to plan.date_range.\n\nImportant:\nCache stores unresolved relative periods. This node resolves dates fresh at runtime.",
-        "height": 352,
-        "width": 496
+        "content": "## 5. Deterministic SQL Generation & Safety\n\nPurpose:\nBuilds a controlled SQL query from validated metadata and approved metric definitions.\n\nIncludes:\n- Build Analytics Query\n- SQL Safety Guard\n- Route Query Status\n\nSafety checks:\n- query must exist\n- query must be read-only\n- only approved tables are allowed\n- destructive SQL is blocked\n- table names, fields, operators, and date columns must come from metadata\n- user text is never accepted as raw SQL\n\nDesign principle:\nThe LLM does not write SQL directly. The workflow builds SQL from trusted components.",
+        "height": 560,
+        "width": 560
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        1680,
-        560
+        3920,
+        -208
       ],
       "typeVersion": 1,
-      "id": "d86e2e13-2b1c-4864-8989-991c4cb4fecb",
+      "id": "b504acdb-51bc-47b7-84bf-60fb22076e1e",
       "name": "Sticky Note6"
     },
     {
       "parameters": {
-        "content": "## 5. Main Routing\n\nPurpose:\nRoute the validated plan to the correct responsibility zone.\n\nRoutes:\n- ecommerce_orders -> Ecommerce analytics branch\n- marketing_campaigns -> Marketing analytics branch\n- clarification -> Controlled clarification response\n- unsupported -> Controlled unsupported response\n- invalid_plan -> Controlled safe failure\n\nSafety rule:\nOnly ecommerce_orders and marketing_campaigns routes can reach Postgres analytics execution.",
-        "height": 320,
-        "width": 480
+        "content": "## 6. Analytics Execution\n\nPurpose:\nRuns the approved read-only analytics query in Supabase Postgres.\n\nIncludes:\n- Execute Analytics Query\n\nCredential:\nUse the read-only analytics database credential.\n\nExpected behavior:\n- executes only validated SELECT queries\n- returns grouped, filtered, ranked, or comparison results\n- does not modify source data\n\nDesign principle:\nPostgres calculates the numbers. The model does not calculate or recalculate metrics.",
+        "height": 560,
+        "width": 448
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        2144,
-        1264
+        4496,
+        -208
       ],
       "typeVersion": 1,
-      "id": "dd202af1-4105-49d3-93fa-ffab83652239",
+      "id": "45f739ad-24f6-44b1-808d-66dbeb32c744",
       "name": "Sticky Note7"
     },
     {
       "parameters": {
-        "content": "## 6. Ecommerce Analytics Branch\n\nPurpose:\nExecute deterministic ecommerce calculations.\n\nResponsibilities:\n- Fetch the selected metric formula from metric_registry.\n- Merge metric definition with the resolved analysis plan.\n- Build safe SQL using approved ecommerce dimensions and query templates.\n- Support ranking, breakdown, filtered breakdown and comparison.\n- Apply date filters from resolved date range.\n- Execute query against ecommerce_orders.\n\nDataset:\necommerce_orders\n\nDate column:\norder_date",
-        "height": 352,
-        "width": 736
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        2608,
-        -224
-      ],
-      "typeVersion": 1,
-      "id": "1c1ccbaa-38cf-4a01-b8db-3c0e9d1a984c",
-      "name": "Sticky Note9"
-    },
-    {
-      "parameters": {
-        "content": "## 7. Marketing Analytics Branch\n\nPurpose:\nExecute deterministic marketing calculations.\n\nResponsibilities:\n- Fetch the selected metric formula from metric_registry.\n- Merge metric definition with the resolved analysis plan.\n- Build safe SQL using approved marketing dimensions and query templates.\n- Support ranking, breakdown, filtered breakdown and comparison.\n- Apply date filters from resolved date range.\n- Execute query against marketing_campaigns.\n\nDataset:\nmarketing_campaigns\n\nDate column:\ncampaign_date",
-        "height": 352,
-        "width": 560
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        2608,
-        368
-      ],
-      "typeVersion": 1,
-      "id": "0b04e4f1-e59c-48e0-ae19-0f15e84761d5",
-      "name": "Sticky Note11"
-    },
-    {
-      "parameters": {
-        "content": "## 8. Query Status Gate\n\nPurpose:\nPrevent unsafe or missing SQL from reaching Postgres.\n\nResponsibilities:\n- Allow query execution only when query_status = ready.\n- Route query_status = failed to controlled response.\n- Prevent errors such as Failed query: undefined.\n\nSafety rule:\nNo analytics Postgres node should run unless a validated SQL query exists.",
-        "height": 256,
-        "width": 400
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        3216,
-        432
-      ],
-      "typeVersion": 1,
-      "id": "8139a37e-d326-4a5c-b2dd-4a3d4d00a981",
-      "name": "Sticky Note12"
-    },
-    {
-      "parameters": {
-        "content": "## 9. Validate Analytics Result\n\nPurpose:\nCheck whether SQL results are complete and safe to answer.\n\nResponsibilities:\n- Validate row count, metric value and date range.\n- Detect empty result sets.\n- Detect missing comparison values.\n- Detect null metric values and ratio denominator failures.\n- Return controlled_failure when required data is unavailable.\n- Return success_with_warnings for non-critical quality issues.\n\nOutput contract:\n- status\n- response_type\n- dataset\n- metrics\n- row_count\n- date_start/date_end\n- warnings\n- results",
-        "height": 496,
+        "content": "## 7. Result Validation & Data Quality\n\nPurpose:\nChecks whether the query result is safe and useful enough to answer.\n\nIncludes:\n- Validate Analytics Result\n\nChecks:\n- empty result sets\n- missing requested comparison values\n- missing metric values\n- missing date range\n- zero or invalid denominators\n- incomplete or unavailable data slices\n\nOutput:\nProduces either a verified analytics result or a controlled failure payload.\n\nDesign principle:\nNo answer is returned from unusable or incomplete data without a warning.",
+        "height": 512,
         "width": 432
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        3648,
-        -128
+        5008,
+        -208
       ],
       "typeVersion": 1,
-      "id": "e2040f64-1364-460f-929a-cd8a5b155e54",
-      "name": "Sticky Note13"
+      "id": "31020915-04e1-4f39-98fb-37233687467e",
+      "name": "Sticky Note9"
     },
     {
       "parameters": {
-        "content": "## 10. Response Composition\n\nPurpose:\nTurn verified analytics JSON into a concise user-facing answer.\n\nResponsibilities:\n- Use only the current verified result payload.\n- Do not recalculate or invent values.\n- Put the main answer first.\n- Include every result row for comparisons and breakdowns.\n- Include source, row count and date range for successful analytics.\n- Avoid normal source lines for controlled failures.\n\nSafety rule:\nThe composer explains verified numbers; it does not perform analysis.",
-        "height": 352,
-        "width": 496
+        "content": "## 8. Controlled Failure Handling\n\nPurpose:\nBuilds safe user-facing responses when the workflow cannot answer.\n\nIncludes:\n- controlled response path for unsupported, clarification, invalid plan, blocked, or failed status\n\nUsed when:\n- dataset is unsupported\n- question is ambiguous\n- plan is invalid\n- metadata authorization fails\n- SQL safety fails\n- no matching data is found\n\nDesign principle:\nFail clearly before touching analytics execution whenever possible.",
+        "height": 480,
+        "width": 720
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        4208,
-        -128
+        4560,
+        1104
       ],
       "typeVersion": 1,
-      "id": "4c987b51-a211-427f-831a-c5562ee3a16e",
-      "name": "Sticky Note14"
+      "id": "75ce1fe7-841d-4de9-8b58-2dfa3c4d4165",
+      "name": "Sticky Note11"
     },
     {
       "parameters": {
-        "content": "## 11. Controlled Responses\n\nPurpose:\nReturn safe messages for non-analysis paths.\n\nRoutes handled:\n- clarification\n- unsupported\n- invalid_plan\n- query_status failed\n- controlled_failure\n\nResponsibilities:\n- Ask one clarification question when the request is vague.\n- Refuse unsupported datasets or domains.\n- Explain safe failure without exposing workflow internals.\n- Preserve trace_id and user_question for logging.",
-        "height": 352,
-        "width": 464
-      },
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        3680,
-        736
-      ],
-      "typeVersion": 1,
-      "id": "4fb986b0-02db-4151-ad39-1fce071b012c",
-      "name": "Sticky Note15"
-    },
-    {
-      "parameters": {
-        "content": "## 12. Execution Logging\n\nPurpose:\nStore an audit trail for every workflow run.\n\nResponsibilities:\n- Normalize log payloads across success and failure paths.\n- Store trace ID, user question, selected dataset, metrics, analysis type, row count, dates, warnings and status.\n- Log unsupported, clarification, invalid_plan, failed and success paths.\n- Keep metrics as the universal workflow/log field.\n\nLog table:\nanalytics_execution_log",
-        "height": 320,
+        "content": "## 9. Response Composition & Safety\n\nPurpose:\nTurns verified analytics JSON into a concise business answer.\n\nIncludes:\n- Response Composer\n- Response Safety Guard\n- Format Final Response\n\nRules:\n- use only current verified input\n- do not recalculate values\n- do not invent causes or recommendations\n- include source, record count, date range, and warnings\n- remove internal workflow or SQL details from final user output\n\nDesign principle:\nThe composer explains verified results. The safety guard checks the response before it leaves the workflow.",
+        "height": 528,
         "width": 560
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        4224,
-        544
+        5520,
+        -304
       ],
       "typeVersion": 1,
-      "id": "65dd1a1e-9e82-4363-9dec-14bfc1d879c2",
-      "name": "Sticky Note16"
+      "id": "b3776536-167b-427b-898c-fc673217eddb",
+      "name": "Sticky Note12"
     },
     {
       "parameters": {
-        "content": "## 13. Webhook Response\n\nPurpose:\nReturn the final response to the chat UI.\n\nResponsibilities:\n- Format the final response payload.\n- Send response back to Streamlit or n8n chat.\n- Keep user-facing output separate from internal workflow metadata.\n\nOutput:\n- response\n- status\n- trace_id\n- optional source details",
-        "height": 352,
-        "width": 384
+        "content": "## 10. Execution Logging\n\nPurpose:\nStores an audit trail for successful answers and controlled failures.\n\nIncludes:\n- Normalize Log Payload\n- Add Execution Log\n\nCredential:\nUse the audit/write database credential.\n\nLogged fields:\n- trace ID\n- user question\n- selected dataset\n- metrics\n- analysis type\n- row count\n- date range\n- warnings\n- status\n- timestamp\n\nDesign principle:\nEvery path should leave a trace, including failures, so the system can be tested and improved.",
+        "height": 704,
+        "width": 672
       },
       "type": "n8n-nodes-base.stickyNote",
       "position": [
-        5216,
-        416
+        5728,
+        816
       ],
       "typeVersion": 1,
-      "id": "79087513-4d24-4c66-8554-61beb9b980ed",
-      "name": "Sticky Note17"
+      "id": "894564db-12ea-4cc5-8369-127e15dacc6c",
+      "name": "Sticky Note13"
     }
   ],
+  "pinData": {},
   "connections": {
     "Prepare Input": {
       "main": [
@@ -1053,7 +1116,7 @@
       "main": [
         [
           {
-            "node": "Prepare Cache Payload",
+            "node": "Switch: Plan Source",
             "type": "main",
             "index": 0
           }
@@ -1108,46 +1171,7 @@
       "main": [
         [
           {
-            "node": "Format Final Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Main Switch": {
-      "main": [
-        [
-          {
-            "node": "Fetch Ecommerce Metric Definition",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Fetch Marketing Metric Definition",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Controlled Response",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Controlled Response",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Controlled Response",
+            "node": "Response Safety Guard",
             "type": "main",
             "index": 0
           }
@@ -1164,22 +1188,6 @@
           },
           {
             "node": "Respond to Webhook",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Analytics Result": {
-      "main": [
-        [
-          {
-            "node": "Response Composer",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Normalize Log Payload",
             "type": "main",
             "index": 0
           }
@@ -1223,7 +1231,7 @@
       "main": [
         [
           {
-            "node": "Prepare Input",
+            "node": "Request Guard",
             "type": "main",
             "index": 0
           }
@@ -1263,7 +1271,7 @@
       "main": [
         [
           {
-            "node": "Update Hit Count On Cache Hit",
+            "node": "Validate Analysis Plan",
             "type": "main",
             "index": 0
           }
@@ -1275,17 +1283,6 @@
         [
           {
             "node": "Restore Plan After Cache Save",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Update Hit Count On Cache Hit": {
-      "main": [
-        [
-          {
-            "node": "Restore Plan After Hit Count Update",
             "type": "main",
             "index": 0
           }
@@ -1314,7 +1311,7 @@
         ],
         [
           {
-            "node": "Main Switch",
+            "node": "Resolve Date Range",
             "type": "main",
             "index": 0
           }
@@ -1343,146 +1340,11 @@
         ]
       ]
     },
-    "Restore Plan After Hit Count Update": {
-      "main": [
-        [
-          {
-            "node": "Resolve Date Range",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Ecommerce Analytics Query": {
-      "main": [
-        [
-          {
-            "node": "Route Ecommerce Query Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Marketing Analytics Query": {
-      "main": [
-        [
-          {
-            "node": "Route Marketing Query Status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Marketing Analytics Query": {
-      "main": [
-        [
-          {
-            "node": "Validate Analytics Result",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute Ecommerce Analytics Query": {
-      "main": [
-        [
-          {
-            "node": "Validate Analytics Result",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Ecommerce Metric Definition": {
-      "main": [
-        [
-          {
-            "node": "Merge Ecommerce Metric With Plan",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Merge Ecommerce Metric With Plan": {
-      "main": [
-        [
-          {
-            "node": "Build Ecommerce Analytics Query",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Route Ecommerce Query Status": {
-      "main": [
-        [
-          {
-            "node": "Execute Ecommerce Analytics Query",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Controlled Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Marketing Metric Definition": {
-      "main": [
-        [
-          {
-            "node": "Merge Marketing Metric With Plan",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Merge Marketing Metric With Plan": {
-      "main": [
-        [
-          {
-            "node": "Build Marketing Analytics Query",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Route Marketing Query Status": {
-      "main": [
-        [
-          {
-            "node": "Execute Marketing Analytics Query",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Build Controlled Response",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Resolve Date Range": {
       "main": [
         [
           {
-            "node": "Main Switch",
+            "node": "Route Execution Type",
             "type": "main",
             "index": 0
           }
@@ -1499,6 +1361,204 @@
           }
         ]
       ]
+    },
+    "Fetch Metric Definition": {
+      "main": [
+        [
+          {
+            "node": "Merge Metric Definition With Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Analytics Query": {
+      "main": [
+        [
+          {
+            "node": "SQL Safety Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Analytics Query": {
+      "main": [
+        [
+          {
+            "node": "Validate Analytics Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Dataset Metadata": {
+      "main": [
+        [
+          {
+            "node": "Merge Dataset Metadata With Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Dataset Metadata With Plan": {
+      "main": [
+        [
+          {
+            "node": "Fetch Metric Definition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Metric Definition With Context": {
+      "main": [
+        [
+          {
+            "node": "Metadata Authorization Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Analytics Result": {
+      "main": [
+        [
+          {
+            "node": "Response Composer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Normalize Log Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Execution Type": {
+      "main": [
+        [
+          {
+            "node": "Fetch Dataset Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Controlled Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Guard": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metadata Authorization Guard": {
+      "main": [
+        [
+          {
+            "node": "Build Analytics Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL Safety Guard": {
+      "main": [
+        [
+          {
+            "node": "Route Query Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Response Safety Guard": {
+      "main": [
+        [
+          {
+            "node": "Format Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Plan Source": {
+      "main": [
+        [
+          {
+            "node": "Resolve Date Range",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Cache Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Query Status": {
+      "main": [
+        [
+          {
+            "node": "Execute Analytics Query",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Controlled Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Prepare Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Controlled Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -1507,5 +1567,6 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
+  "nodeGroups": [],
   "tags": []
 }
