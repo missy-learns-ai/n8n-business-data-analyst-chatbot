@@ -19,6 +19,16 @@ Core design:
 - n8n validates, routes, caches, and logs the workflow.
 - Streamlit provides the user-facing chat interface.
 ```
+
+## Product Management Artifacts
+
+This project is maintained with lightweight product planning artifacts in Google Workspace.
+
+| Artifact | Purpose |
+|---|---|
+| [Project Scope](https://docs.google.com/document/d/1AsekMlh81YBzn1J9DcuwYzWh8FOrbcAY/edit?usp=sharing&ouid=100069705706674387117&rtpof=true&sd=true) | Defines the product vision, phased scope, acceptance criteria, and implementation direction. |
+| [Project Board](https://docs.google.com/spreadsheets/d/12bCf6Is3iMnxudmZwm5hHdA3Zmyn2hKoye6YaOW9lBE/edit?gid=0#gid=0) | Tracks tasks, status, priorities, and delivery progress across project phases. |
+
 <img width="1395" height="562" alt="image" src="https://github.com/user-attachments/assets/a41a4879-4707-4d3f-a5d2-292e580f37ff" />
 
 ---
