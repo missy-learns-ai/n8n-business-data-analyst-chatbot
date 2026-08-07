@@ -2,10 +2,11 @@
 
 This project uses Supabase Postgres as the analytics and logging layer.
 
-The n8n workflow expects five tables:
+The n8n workflow expects six tables:
 
 - `ecommerce_orders`
 - `marketing_campaigns`
+- `dataset_metadata`
 - `metric_registry`
 - `analytics_execution_log`
 - `planner_cache`
@@ -70,6 +71,46 @@ Required columns:
 | `revenue` | `numeric` | Attributed revenue |
 | `leads` | `numeric` | Generated leads |
 | `new_customers` | `numeric` | Acquired customers |
+
+---
+
+## Dataset Metadata
+
+`dataset_metadata` stores the approved execution contract for each dataset.
+
+The workflow fetches dataset metadata before building SQL:
+
+```sql
+select
+  dataset_name,
+  display_name,
+  description,
+  table_name,
+  date_column,
+  dimensions,
+  dimension_aliases,
+  known_values,
+  supported_analysis_types
+from dataset_metadata
+where dataset_name = '<dataset>'
+  and is_active = true
+limit 1;
+```
+
+Important fields:
+
+| Column | Purpose |
+|---|---|
+| `dataset_name` | Logical dataset key selected by the planner |
+| `table_name` | Approved physical Postgres table |
+| `date_column` | Approved date field used for date filters |
+| `dimensions` | JSON mapping of canonical dimensions to SQL columns |
+| `dimension_aliases` | JSON mapping of user vocabulary to canonical dimensions |
+| `known_values` | Known values used for planner guidance and validation |
+| `supported_analysis_types` | Allowed deterministic analysis patterns |
+| `is_active` | Enables or disables dataset access |
+
+Only trusted maintainers should update this table. End users should never be allowed to provide table names, column names, aliases, or metadata directly.
 
 ---
 
@@ -141,8 +182,9 @@ When uploading data into Supabase:
 3. Create the tables using [database/schema.sql](../database/schema.sql).
 4. Upload ecommerce rows into `ecommerce_orders`.
 5. Upload marketing rows into `marketing_campaigns`.
-6. Insert metric definitions into `metric_registry`.
-7. Connect n8n Postgres nodes to the same Supabase database.
+6. Insert dataset definitions into `dataset_metadata`.
+7. Insert metric definitions into `metric_registry`.
+8. Connect n8n Postgres nodes to the same Supabase database.
 
 ---
 

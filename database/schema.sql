@@ -68,6 +68,138 @@ create index if not exists idx_marketing_campaigns_device
 create index if not exists idx_marketing_campaigns_region
   on marketing_campaigns (region);
 
+create table if not exists dataset_metadata (
+  dataset_name text primary key,
+  display_name text not null,
+  description text not null,
+  table_name text not null,
+  date_column text not null,
+  dimensions jsonb not null default '{}'::jsonb,
+  dimension_aliases jsonb not null default '{}'::jsonb,
+  known_values jsonb not null default '{}'::jsonb,
+  supported_analysis_types jsonb not null default '[]'::jsonb,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into dataset_metadata (
+  dataset_name,
+  display_name,
+  description,
+  table_name,
+  date_column,
+  dimensions,
+  dimension_aliases,
+  known_values,
+  supported_analysis_types,
+  is_active
+)
+values
+  (
+    'ecommerce_orders',
+    'Ecommerce Orders',
+    'Online ecommerce order transaction data.',
+    'ecommerce_orders',
+    'order_date',
+    '{
+      "gender": "gender",
+      "region": "region",
+      "country": "country",
+      "city": "city",
+      "product_category": "product_category",
+      "product_name": "product_name",
+      "sales_channel": "sales_channel",
+      "payment_method": "payment_method",
+      "order_status": "order_status",
+      "age_group": "age_group"
+    }'::jsonb,
+    '{
+      "category": "product_category",
+      "product_category_name": "product_category",
+      "product_type": "product_category",
+      "item_category": "product_category",
+      "product": "product_name",
+      "item": "product_name",
+      "channel": "sales_channel",
+      "order_channel": "sales_channel",
+      "purchase_channel": "sales_channel",
+      "platform": "sales_channel",
+      "payment": "payment_method",
+      "status": "order_status",
+      "location": "region",
+      "market": "region",
+      "geography": "region"
+    }'::jsonb,
+    '{
+      "product_category": ["Electronics", "Home & Kitchen", "Fashion", "Beauty", "Sports"]
+    }'::jsonb,
+    '[
+      "total_summary",
+      "grouped_metric_ranking",
+      "grouped_metric_breakdown",
+      "filtered_grouped_breakdown",
+      "dimension_comparison"
+    ]'::jsonb,
+    true
+  ),
+  (
+    'marketing_campaigns',
+    'Marketing Campaigns',
+    'Marketing campaign performance data.',
+    'marketing_campaigns',
+    'campaign_date',
+    '{
+      "campaign_name": "campaign_name",
+      "channel": "channel",
+      "region": "region",
+      "country": "country",
+      "audience_segment": "audience_segment",
+      "device": "device",
+      "campaign_objective": "campaign_objective",
+      "campaign_status": "campaign_status"
+    }'::jsonb,
+    '{
+      "platform": "channel",
+      "ad_platform": "channel",
+      "marketing_platform": "channel",
+      "social_platform": "channel",
+      "marketing_channel": "channel",
+      "campaign_channel": "channel",
+      "traffic_channel": "channel",
+      "traffic_source": "channel",
+      "ad_channel": "channel",
+      "source": "channel",
+      "placement": "channel",
+      "audience": "audience_segment",
+      "segment": "audience_segment",
+      "objective": "campaign_objective",
+      "status": "campaign_status"
+    }'::jsonb,
+    '{
+      "channel": ["Display Ads", "Email", "Facebook", "Google Search", "Instagram", "LinkedIn", "TikTok", "YouTube"]
+    }'::jsonb,
+    '[
+      "total_summary",
+      "grouped_metric_ranking",
+      "grouped_metric_breakdown",
+      "filtered_grouped_breakdown",
+      "dimension_comparison"
+    ]'::jsonb,
+    true
+  )
+on conflict (dataset_name) do update set
+  display_name = excluded.display_name,
+  description = excluded.description,
+  table_name = excluded.table_name,
+  date_column = excluded.date_column,
+  dimensions = excluded.dimensions,
+  dimension_aliases = excluded.dimension_aliases,
+  known_values = excluded.known_values,
+  supported_analysis_types = excluded.supported_analysis_types,
+  is_active = excluded.is_active,
+  updated_at = now();
+
 create table if not exists metric_registry (
   metric_key text primary key,
   dataset_name text not null,

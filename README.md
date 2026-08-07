@@ -58,23 +58,93 @@ Unsupported or ambiguous questions fail cleanly before analytics SQL runs.
 ```text
 Streamlit UI
 -> n8n Webhook
+-> Request Guard
 -> Prepare Input
 -> Business Catalog
--> Planner Agent
--> Planner Cache
+-> Planner / Cache
 -> Validate Analysis Plan
 -> Resolve Date Range
--> Dataset Router
+-> Fetch Dataset Metadata
+-> Metadata Authorization Guard
 -> Fetch Metric Definition
--> Build Deterministic SQL
+-> Build Analytics Query
+-> SQL Safety Guard
 -> Execute Postgres Query
 -> Validate Analytics Result
 -> Response Composer
--> Execution Log
+-> Response Safety Guard
+-> Format Final Response
 -> Webhook Response
+-> Execution Log
 ```
 
-The workflow is intentionally structured as one n8n orchestrator with clear responsibility zones. This keeps the system easy to inspect while still separating planning, validation, calculation, data-quality checks, response generation, and logging.
+The workflow is intentionally structured as one n8n orchestrator with clear responsibility zones. This keeps the system easy to inspect while still separating request protection, planning, validation, metadata authorization, calculation, data-quality checks, response generation, response safety, and logging.
+
+### Metadata-Driven Refactor
+
+The analytics execution layer was refactored from separate ecommerce and marketing query-builder branches into a more generic metadata-driven pattern.
+
+Earlier versions duplicated the same SQL-building logic for each dataset. The current workflow fetches approved dataset metadata and metric definitions from Supabase, then uses those trusted definitions to build deterministic SQL.
+
+This makes the system easier to extend:
+
+- dataset rules live in metadata instead of scattered workflow code
+- metric formulas come from `metric_registry`
+- cache-hit and cache-miss paths go through the same validation layer
+- adding a dataset requires metadata and metric definitions, not copied workflow branches
+- empty or unsafe execution paths return controlled responses instead of blank webhook responses
+
+### Layered Guardrails
+
+The workflow uses layered guardrails so the LLM can plan and explain, but cannot directly control execution.
+
+```text
+Webhook
+-> Request Guard
+-> Planner / Cache
+-> Validate Analysis Plan
+-> Metadata Authorization Guard
+-> Build Analytics Query
+-> SQL Safety Guard
+-> Execute Analytics Query
+-> Validate Analytics Result
+-> Response Composer
+-> Response Safety Guard
+-> Execution Log
+```
+
+| Guardrail | Placement | Purpose |
+|---|---|---|
+| Request Guard | Immediately after Webhook | Validates request shape, detects PII, prompt injection, secret extraction, and unsafe database intent before planner execution. |
+| Cache Revalidation | Cache hit path before date resolution | Treats cached plans as untrusted and revalidates them through the same `Validate Analysis Plan` node as new planner outputs. |
+| Validate Analysis Plan | After Planner Agent or cached plan restore | Normalizes planner output, applies aliases, validates dataset, metric, dimension, filters, date column, limit, and analysis type. |
+| Metadata Authorization Guard | After dataset metadata and metric definition lookup | Confirms the selected dataset, metric, dimensions, filters, table name, and date column are approved before SQL generation. |
+| SQL Safety Guard | Between Build Analytics Query and Execute Analytics Query | Allows only read-only `SELECT` / `WITH` analytics queries and blocks destructive or multi-statement SQL patterns. |
+| Validate Analytics Result | After Postgres execution | Checks empty results, missing values, invalid comparison values, null metric values, incomplete date ranges, warnings, and controlled failure cases. |
+| Response Safety Guard | After Response Composer | Checks final user-facing text for empty responses, missing source details, internal implementation details, secrets, and unsafe claims. |
+| Execution Log | Final logging path | Stores trace ID, question, selected dataset, metrics, analysis type, row count, date range, warnings, status, and timestamp. |
+
+Security design principles:
+
+- User input is untrusted.
+- Planner output is untrusted.
+- Cached plans are untrusted.
+- Metadata-driven context must be authorized before use.
+- SQL is generated only from approved metadata and metric definitions.
+- Postgres performs deterministic calculations.
+- The LLM does not calculate metrics or execute SQL directly.
+- Security warnings are logged internally.
+- Data-quality warnings may be shown to users when helpful.
+
+Failure routing:
+
+| Failure type | Route / status | User behavior |
+|---|---|---|
+| Prompt injection, PII, secret extraction, unsafe database intent | `security_blocked` | Controlled safety refusal |
+| Out-of-scope but harmless request | `unsupported` | Scope explanation with suggested analytics topics |
+| Ambiguous analytics request | `clarification` | One clarification question |
+| Invalid planner output | `invalid_plan` | Safe failure message |
+| Empty or incomplete analytics result | `failed` or `success_with_warnings` | Controlled response with data-quality warning |
 
 See [docs/architecture.md](docs/architecture.md) for more implementation detail.
 
@@ -170,9 +240,10 @@ Supported dimensions include channel, region, country, audience segment, device,
 
 1. Import [workflows/business-data-analyst-chatbot.workflow.json](workflows/business-data-analyst-chatbot.workflow.json) into n8n.
 2. Reconnect the model credential on the planner and response-composer model nodes.
-3. Reconnect the Postgres credential on all Supabase/Postgres nodes.
-4. Confirm the webhook path and production webhook URL.
-5. Run test questions from the Streamlit app or n8n webhook.
+3. Reconnect read-only Supabase/Postgres credentials on metadata, metric, and analytics query nodes.
+4. Reconnect audit/write Supabase/Postgres credentials on planner cache and execution log nodes.
+5. Confirm the webhook path and production webhook URL.
+6. Run test questions from the Streamlit app or n8n webhook.
 
 The workflow JSON does not include private credential values. You must reconnect your own n8n credentials after import.
 
@@ -186,6 +257,7 @@ The workflow expects these Postgres tables:
 |---|---|
 | `ecommerce_orders` | Ecommerce source dataset |
 | `marketing_campaigns` | Marketing source dataset |
+| `dataset_metadata` | Approved dataset tables, dimensions, aliases, date columns, and supported analysis types |
 | `metric_registry` | Approved KPI formulas and business definitions |
 | `analytics_execution_log` | Trace log for success and controlled-failure paths |
 | `planner_cache` | Optional cache for reusable structured plans |
