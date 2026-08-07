@@ -19,8 +19,7 @@ Core design:
 - n8n validates, routes, caches, and logs the workflow.
 - Streamlit provides the user-facing chat interface.
 ```
-
-<img width="1390" height="611" alt="image" src="https://github.com/user-attachments/assets/7f3b2371-1967-4662-8c5e-98c1365df064" />
+<img width="1395" height="562" alt="image" src="https://github.com/user-attachments/assets/a41a4879-4707-4d3f-a5d2-292e580f37ff" />
 
 ---
 
