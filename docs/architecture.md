@@ -1,192 +1,144 @@
 # Architecture
 
-This document records the baseline architecture for the original proof of concept and the target Phase 1 architecture for the reliable analytical foundation.
+This document explains the current architecture of the Agentic Business Intelligence Chatbot.
 
-Phase 1 is currently being implemented on the `phase-1/reliable-analytics-foundation` branch. The live n8n workflow is still being refined and will be exported to the repository once the Phase 1 workflow is ready.
+The project is a production-inspired analytics agent built with n8n, Supabase Postgres, and Streamlit. The system lets users ask natural-language questions about ecommerce and marketing data while keeping calculations deterministic, auditable, and protected by guardrails.
 
-## Phase 1 Design Decision
-
-The original prototype used Google Sheets as the analytical data source. Phase 1 now uses **Supabase Postgres** as the structured analytical store because real business datasets are expected to grow beyond the comfortable limits of a spreadsheet-backed chatbot.
-
-The Phase 1 implementation keeps **one n8n orchestrator workflow** for now, but separates responsibility inside the workflow into clearly named zones:
+## Core Design Principle
 
 ```text
-Chat Trigger
+The LLM plans and explains.
+n8n validates, authorizes, routes, and logs.
+Supabase Postgres calculates the numbers.
+Streamlit provides the user-facing chat interface.
+```
+
+The language model does not calculate metrics directly, write raw SQL, choose unapproved tables, or execute database operations. It proposes a structured analysis plan. The workflow treats that plan as untrusted until deterministic guardrails approve it.
+
+## High-Level Flow
+
+```text
+Streamlit UI
+-> n8n Webhook
+-> Request Guard
 -> Prepare Input
--> Add Business Catalog
--> Planner Agent
+-> Business Catalog
+-> Planner / Cache
 -> Validate Analysis Plan
--> Main Switch
-   -> ecommerce_orders analytics branch
-   -> marketing_campaigns analytics branch
-   -> clarification branch
-   -> unsupported branch
-   -> invalid_plan branch
--> Build Analytics Query / Controlled Response
--> Supabase Postgres deterministic query
+-> Resolve Date Range
+-> Fetch Dataset Metadata
+-> Fetch Metric Definition
+-> Metadata Authorization Guard
+-> Build Analytics Query
+-> SQL Safety Guard
+-> Execute Analytics Query
 -> Validate Analytics Result
 -> Response Composer
+-> Response Safety Guard
+-> Format Final Response
+-> Webhook Response
 -> Execution Log
--> Chat Response
 ```
 
-This is a scope adjustment from the original specification, which proposed separate n8n workflow files for orchestrator, ecommerce analytics, marketing analytics and error handling. The current decision is to keep one workflow while the architecture is still changing quickly, then split into sub-workflows later only if the single workflow becomes difficult to maintain.
-
-The important architectural separation is therefore **responsibility separation**, not necessarily file separation.
-
-## Current Prototype Baseline
-
-The repository still contains the original exported prototype workflow:
+The importable workflow is stored at:
 
 ```text
-business-data-analyst-chatbot.json
+workflows/business-data-analyst-chatbot.workflow.json
 ```
 
-Original prototype flow:
+The older Google Sheets proof of concept is preserved separately:
 
 ```text
-Start Conversation
--> AI Agent
--> Google Sheets Tool(s)
--> Edit Fields
--> Chat Response
+workflows/prototype-business-data-analyst-googlesheets.workflow.json
 ```
 
-The prototype demonstrates the basic user experience: a user asks a natural-language business question and receives a stakeholder-friendly analytical response. It is a useful proof of concept, but it is not yet reliable enough for real analytical use because the AI Agent handles too many responsibilities at once.
+## Why The Workflow Was Refactored
 
-## Current Prototype Node Responsibilities
+The original proof of concept connected an AI agent directly to Google Sheets tools. That was useful for testing the user experience, but it had several problems:
 
-| Node | Type | Current responsibility |
+- the AI agent handled planning, routing, retrieval, calculation, and response writing
+- calculations were not fully deterministic
+- dataset routing depended heavily on prompt instructions
+- metric formulas were not enforced through a central source of truth
+- data-quality checks were not explicit
+- execution traces were not logged
+- scaling to more datasets would require duplicated workflow logic
+
+The current workflow uses Supabase Postgres and a metadata-driven execution layer. Instead of maintaining separate ecommerce and marketing query-builder branches, the workflow fetches approved dataset metadata and metric definitions, then builds deterministic SQL from those trusted components.
+
+## Responsibility Split
+
+| Component | Responsibility | Type |
 |---|---|---|
-| Start Conversation | Chat Trigger | Receives the user chat message and starts the workflow. |
-| AI Agent | LangChain AI Agent | Interprets the question, selects Google Sheets tools, retrieves data, calculates values and writes the final response. |
-| OpenAI Chat Model | OpenAI Chat Model | Provides the language model used by the AI Agent. |
-| Simple Memory | Memory Buffer | Stores a small amount of recent conversation context. |
-| E-commerce Orders & Customer Analysis | Google Sheets Tool | Provides access to ecommerce order data in the prototype. |
-| Marketing Campaign Performance Analysis | Google Sheets Tool | Provides access to marketing campaign data in the prototype. |
-| Edit Fields | Set node | Maps the AI Agent `output` field into a `response` field. |
-| Chat | Chat Response | Sends the final message to the user. |
-| Sticky Notes | Documentation notes | Explain the prototype workflow in the n8n canvas. |
-
-## Prototype Limitations
-
-### 1. The AI Agent Does Too Much
-
-The original AI Agent is responsible for planning, routing, retrieving, calculating, validating and responding. If an answer is wrong, it is difficult to isolate whether the failure came from routing, data access, arithmetic, prompt behavior or response formatting.
-
-### 2. Calculations Are Not Deterministic
-
-The prototype allows the language model to calculate values directly from retrieved spreadsheet rows. That is risky because language models can make arithmetic mistakes or produce inconsistent answers between runs.
-
-Phase 1 changes this rule:
-
-```text
-The model may plan and explain.
-Supabase SQL calculates the numbers.
-Workflow nodes validate and enforce the process.
-```
-
-### 3. Routing Is Prompt-Dependent
-
-The prototype depends mostly on prompt instructions and tool descriptions for dataset routing. Phase 1 adds a structured analysis plan, a business catalog and a validator so routing can be tested.
-
-### 4. Data Quality Is Not Explicitly Checked
-
-The prototype does not have a dedicated validation step for empty results, missing required fields, duplicate IDs, invalid denominators, unsupported filters or incomplete date periods.
-
-### 5. Metric Definitions Are Not Centralized
-
-The prototype describes formulas in documentation, but does not enforce them through a machine-readable metric registry or a deterministic calculation layer.
-
-### 6. Provenance Is Inconsistent
-
-A reliable analytical answer should include the dataset, record count, date period and warnings where relevant. The prototype does not enforce this consistently.
-
-### 7. Logging Is Missing
-
-The prototype does not store a structured execution trace. Phase 1 adds execution logging so debugging and evaluation become possible.
-
-## Target Phase 1 Architecture
-
-```text
-User / Chat UI
-      |
-Chat Trigger
-      |
-Prepare Input
-      |
-Add Business Catalog
-      |
-Planner Agent
-      |
-Structured Analysis Plan
-      |
-Validate Analysis Plan
-      |
-Main Switch
-      |
-      +-- clarification -> Build Controlled Response
-      +-- unsupported -> Build Controlled Response
-      +-- invalid_plan -> Build Controlled Response
-      |
-      +-- ecommerce_orders -> Build Analytics Query
-      +-- marketing_campaigns -> Build Analytics Query
-                              |
-                        Supabase Postgres
-                              |
-                    Validate Analytics Result
-                              |
-                       Response Composer
-                              |
-                       Execution Logging
-                              |
-                         Chat Response
-```
-
-## Phase 1 Responsibility Zones
-
-| Zone | Responsibility | Deterministic or AI? |
-|---|---|---|
-| Chat Trigger | Receives the user question. | Deterministic |
-| Prepare Input | Normalizes the question, trace ID and workflow input fields. | Deterministic |
-| Add Business Catalog | Provides the planner with allowed datasets, metrics and dimensions. | Deterministic |
+| Streamlit UI | Provides the chat interface and calls the n8n webhook. | Application UI |
+| Webhook | Receives user requests from Streamlit or another client. | n8n trigger |
+| Request Guard | Validates request shape and blocks unsafe input before planner execution. | Deterministic guardrail |
+| Prepare Input | Normalizes question, session, trace, and source-channel fields. | Deterministic |
+| Business Catalog | Provides planner-facing dataset, metric, alias, and known-value context. | Deterministic context |
 | Planner Agent | Converts the user question into a structured analysis plan. | AI |
-| Structured Output Parser | Forces the planner into the expected JSON shape. | Deterministic schema enforcement |
-| Validate Analysis Plan | Checks route, dataset, metric, dimension, filter and date fields against the allowed catalog. | Deterministic |
-| Main Switch | Routes supported, clarification, unsupported and invalid-plan requests. | Deterministic |
-| Build Controlled Response | Returns safe messages for clarification, unsupported and invalid-plan cases. | Deterministic |
-| Build Analytics Query | Converts a validated plan into an approved SQL query pattern. | Deterministic |
-| Supabase Postgres | Stores ecommerce and marketing data and executes KPI calculations. | Deterministic SQL |
-| Validate Analytics Result | Checks row count, null metrics, date period and warnings before a final answer is allowed. | Deterministic |
-| Response Composer | Turns verified results into a top-down business response without recalculating values. | AI |
-| Execution Logging | Stores trace ID, question, selected dataset, metrics, row count, warnings, latency and status. | Deterministic SQL |
-| Chat Response | Sends only the final response text to the user. | Deterministic |
+| Planner Cache | Reuses previously validated unresolved plans for repeated questions. | Deterministic persistence |
+| Validate Analysis Plan | Normalizes, canonicalizes, and validates planner or cached output. | Deterministic guardrail |
+| Resolve Date Range | Converts relative periods such as last quarter into explicit dates. | Deterministic |
+| Fetch Dataset Metadata | Reads approved dataset contract from Supabase. | Database lookup |
+| Fetch Metric Definition | Reads approved metric formula and definition from Supabase. | Database lookup |
+| Metadata Authorization Guard | Confirms selected metadata, metric, dimensions, filters, and date column are approved. | Deterministic guardrail |
+| Build Analytics Query | Builds SQL from approved metadata, metric formulas, filters, and dates. | Deterministic |
+| SQL Safety Guard | Blocks unsafe, destructive, unauthorized, or multi-statement SQL. | Deterministic guardrail |
+| Execute Analytics Query | Runs the approved read-only query in Supabase Postgres. | Deterministic SQL |
+| Validate Analytics Result | Checks empty results, missing values, warnings, and controlled failure cases. | Deterministic guardrail |
+| Response Composer | Explains verified analytics JSON in concise business language. | AI |
+| Response Safety Guard | Checks final text for missing source details, secrets, internals, or unsafe claims. | Deterministic guardrail |
+| Execution Log | Stores trace data for success and controlled-failure paths. | Deterministic SQL |
 
-## Dataset Strategy
+## Metadata-Driven Analytics Engine
 
-Phase 1 uses Supabase Postgres tables for structured analytics:
+The workflow depends on two Supabase configuration tables.
 
-| Dataset | Table | Purpose |
-|---|---|---|
-| Ecommerce orders | `ecommerce_orders` | Order, customer, product, payment, return, delivery and rating analysis. |
-| Marketing campaigns | `marketing_campaigns` | Campaign spend, revenue, ROAS, CTR, conversion, audience, channel and device analysis. |
-| Metric registry | `metric_registry` or repository JSON contract | Defines KPI semantics and formulas. |
-| Execution log | `analytics_execution_log` | Stores workflow trace and debugging information. |
+### `dataset_metadata`
 
-SQL objects may be maintained directly in Supabase during Phase 1. The repository should still document any required table contracts, non-secret setup notes and workflow expectations so the project remains understandable and reproducible.
+`dataset_metadata` defines which datasets are available and how they may be queried.
 
-Do not commit Supabase passwords, private connection strings, credential IDs or private URLs.
+Important fields:
+
+| Field | Purpose |
+|---|---|
+| `dataset_name` | Logical dataset key used by the planner. |
+| `table_name` | Approved physical Postgres table. |
+| `date_column` | Approved date column for date filters. |
+| `dimensions` | JSON mapping of canonical dimension keys to SQL columns. |
+| `dimension_aliases` | JSON mapping of user vocabulary to canonical dimensions. |
+| `known_values` | Known dimension values used for planning and validation. |
+| `supported_analysis_types` | Allowed deterministic analysis patterns. |
+| `is_active` | Enables or disables dataset availability. |
+
+The query builder does not accept table names or column names from the user or the model. It uses metadata that has already been authorized.
+
+### `metric_registry`
+
+`metric_registry` defines approved KPI formulas and business definitions.
+
+Important fields:
+
+| Field | Purpose |
+|---|---|
+| `metric_key` | Stable metric identifier such as `net_sales` or `roas`. |
+| `dataset_name` | Dataset the metric belongs to. |
+| `display_name` | Human-readable metric name. |
+| `formula` | Trusted SQL snippet used inside controlled query templates. |
+| `business_definition` | Plain-language meaning of the metric. |
+
+Metric formulas are maintained by the project owner. End users must never be allowed to write or override formulas.
 
 ## Planner Contract
 
-The Planner Agent should return JSON only. Its job is to classify the user request and propose an analysis plan.
+The Planner Agent returns structured JSON only. It does not answer the user and does not calculate values.
 
-Expected fields:
+Example plan:
 
 ```json
 {
   "route": "supported_analysis",
-  "intent": "rank",
+  "intent": "determine highest sales by product category",
   "dataset": "ecommerce_orders",
   "analysis_type": "grouped_metric_ranking",
   "metrics": ["net_sales"],
@@ -195,7 +147,8 @@ Expected fields:
   "date_range": {
     "start": null,
     "end": null,
-    "date_column": "order_date"
+    "date_column": "order_date",
+    "relative_period": null
   },
   "limit": 1,
   "needs_clarification": false,
@@ -203,110 +156,183 @@ Expected fields:
 }
 ```
 
-The planner must not answer the business question, calculate metrics or write SQL.
+The validator then canonicalizes aliases, corrects safe dataset mismatches, infers missing dimensions from valid filters, and blocks invalid plans.
 
-## Supported Phase 1 Routes
+## Supported Routes
 
 | Route | Meaning | Expected handling |
 |---|---|---|
-| `supported_analysis` | The question can be answered from ecommerce or marketing data. | Validate and run deterministic analytics. |
-| `clarification` | The question is analytical but too vague to choose dataset, metric or dimension. | Return one concise clarification question. |
-| `unsupported` | The question is outside available datasets. | Return a controlled refusal. |
-| `invalid_plan` | The planner produced a plan that violates catalog rules. | Return a safe failure message and log the issue. |
+| `supported_analysis` | The question can be answered from approved analytics data. | Validate, authorize, build SQL, execute, validate result, compose answer. |
+| `clarification` | The question is analytical but too vague. | Return one concise clarification question. |
+| `unsupported` | The question is outside available datasets. | Return a controlled scope response. |
+| `invalid_plan` | The planner or cached plan violates rules. | Return a safe failure response and log the issue. |
+| `security_blocked` | Request guard detected unsafe input. | Return a controlled safety refusal and log security warnings. |
 
-## Supported Initial Analysis Types
-
-The target query layer should support generic analytical patterns rather than one branch per exact question.
+## Supported Analysis Types
 
 | Analysis type | Use case |
 |---|---|
 | `total_summary` | One overall metric, such as total revenue or total orders. |
-| `grouped_metric_ranking` | Highest, lowest, top, best, worst, most or least by a dimension. |
+| `grouped_metric_ranking` | Highest, lowest, top, best, worst, most, or least by a dimension. |
 | `grouped_metric_breakdown` | Breakdown of a metric by one dimension. |
-| `filtered_grouped_breakdown` | Detailed breakdown after applying one or more filters. |
-| `dimension_comparison` | Compare two or more groups, such as mobile vs desktop. |
+| `filtered_grouped_breakdown` | Metric for a specific segment or filtered slice. |
+| `dimension_comparison` | Compare two or more values in the same dimension. |
 
-This design keeps the workflow scalable. The planner can interpret flexible language, while the query builder only executes approved patterns.
+The planner can interpret flexible language, but the query builder only executes these approved patterns.
 
-## Metric Registry Strategy
+## Layered Guardrails
 
-The project currently has a repository-level metric registry contract in:
+The workflow uses guardrails at every risky boundary.
 
-```text
-schemas/metric-registry.json
+| Guardrail | Placement | Purpose |
+|---|---|---|
+| Request Guard | Immediately after Webhook | Validates request shape, detects PII, prompt injection, secret extraction, and unsafe database intent before planner execution. |
+| Cache Revalidation | Cache hit path before date resolution | Treats cached plans as untrusted and revalidates them through the same `Validate Analysis Plan` node as new planner outputs. |
+| Validate Analysis Plan | After Planner Agent or cached plan restore | Normalizes planner output, applies aliases, validates dataset, metric, dimension, filters, date column, limit, and analysis type. |
+| Metadata Authorization Guard | After dataset metadata and metric definition lookup | Confirms selected dataset, metric, dimensions, filters, table name, and date column are approved before SQL generation. |
+| SQL Safety Guard | Between Build Analytics Query and Execute Analytics Query | Allows only read-only `SELECT` / `WITH` analytics queries and blocks destructive or multi-statement SQL patterns. |
+| Validate Analytics Result | After Postgres execution | Checks empty results, missing values, invalid comparison values, null metric values, incomplete date ranges, warnings, and controlled failure cases. |
+| Response Safety Guard | After Response Composer | Checks final user-facing text for empty responses, missing source details, internal implementation details, secrets, and unsafe claims. |
+| Execution Log | Final logging path | Stores trace ID, question, selected dataset, metrics, analysis type, row count, date range, warnings, status, and timestamp. |
+
+Security principles:
+
+- User input is untrusted.
+- Planner output is untrusted.
+- Cached plans are untrusted.
+- Metadata-driven context must be authorized before use.
+- SQL is generated only from approved metadata and metric definitions.
+- Postgres performs deterministic calculations.
+- The LLM does not calculate metrics or execute SQL directly.
+- Security warnings are logged internally.
+- Data-quality warnings may be shown to users when helpful.
+
+## Failure Routing
+
+| Failure type | Route / status | User behavior |
+|---|---|---|
+| Prompt injection, PII, secret extraction, unsafe database intent | `security_blocked` | Controlled safety refusal |
+| Out-of-scope but harmless request | `unsupported` | Scope explanation with suggested analytics topics |
+| Ambiguous analytics request | `clarification` | One clarification question |
+| Invalid planner output | `invalid_plan` | Safe failure message |
+| Empty or incomplete analytics result | `failed` or `success_with_warnings` | Controlled response with data-quality warning |
+
+Controlled failures should still return a stable JSON payload with a user-facing `response` field. This prevents empty webhook responses in Streamlit.
+
+## Planner Cache Strategy
+
+The planner cache stores unresolved structured plans, not final answers or SQL.
+
+The cache should not store:
+
+- generated SQL
+- metric formulas
+- final natural-language responses
+- resolved relative dates
+- raw database results
+
+Relative date questions stay reusable because cached plans store values such as:
+
+```json
+{
+  "relative_period": "last_quarter",
+  "start": null,
+  "end": null
+}
 ```
 
-Phase 1 may also maintain the operational registry in Supabase. That is acceptable, but the contract must stay clear:
+The workflow resolves the actual date range at runtime. Cached plans still go through `Validate Analysis Plan`, so old cache entries cannot bypass new validation rules.
 
-- metric IDs must be stable, such as `net_sales`, `return_rate`, `roas` and `conversion_rate`
-- each metric belongs to exactly one dataset
-- each metric lists required source fields
-- ratio metrics must handle zero denominators safely
-- formulas used in SQL must match trusted reference calculations
+## SQL Generation Strategy
 
-The workflow should avoid duplicated formulas over time. The long-term preference is to use the registry as the source of truth, either by reading from Supabase or by keeping the repository JSON and Supabase table synchronized.
+The query builder creates SQL from trusted components:
+
+- approved table name from `dataset_metadata`
+- approved date column from `dataset_metadata`
+- approved dimension column from `dataset_metadata.dimensions`
+- approved formula from `metric_registry`
+- validated filters from the analysis plan
+- resolved date range from `Resolve Date Range`
+
+The model never writes SQL directly.
+
+The SQL Safety Guard performs a final check before execution. It should block:
+
+- undefined or empty SQL
+- non-read-only SQL
+- destructive statements such as `DROP`, `DELETE`, `UPDATE`, `INSERT`, `ALTER`, `TRUNCATE`, `GRANT`, or `REVOKE`
+- multi-statement SQL
+- unauthorized table names
+- suspicious comments or bypass patterns
+
+## Database Permission Model
+
+The workflow is designed to use separate database credentials.
+
+| Credential | Used by | Permission intent |
+|---|---|---|
+| Supabase analytics reader | Metadata lookup, metric lookup, analytics query execution | Read-only access to approved analytics and metadata tables. |
+| Supabase audit writer | Planner cache and execution log nodes | Write access only to audit/cache tables. |
+
+The n8n workflow should not use the Supabase owner, service role, or full `postgres` credential for normal execution.
+
+Recommended credential mapping:
+
+| n8n node | Credential |
+|---|---|
+| `Fetch Dataset Metadata` | Analytics reader |
+| `Fetch Metric Definition` | Analytics reader |
+| `Execute Analytics Query` | Analytics reader |
+| `Lookup Planner Cache` | Audit writer |
+| `Save Planner Cache` | Audit writer |
+| `Add Execution Log` | Audit writer |
 
 ## Analytics Result Contract
 
-Analytics execution should return structured results instead of prose.
+Analytics execution returns structured JSON, not prose.
 
 Example shape:
 
 ```json
 {
   "status": "success",
+  "response_type": "analytics_result",
   "dataset": "ecommerce_orders",
   "analysis_type": "grouped_metric_ranking",
-  "metric": "net_sales",
-  "dimension": "product_category",
-  "record_count": 223,
+  "metrics": ["net_sales"],
+  "dimensions": ["product_category"],
+  "row_count": 1005,
   "date_start": "2025-01-01",
   "date_end": "2026-06-30",
   "warnings": [],
   "results": [
     {
       "dimension_value": "Electronics",
-      "metric_value": 29296.07,
-      "record_count": 223
+      "metric_value": "29296.07",
+      "group_record_count": "223"
     }
   ]
 }
 ```
 
-The Response Composer may explain this result, but must not recalculate or invent additional metrics.
-
-## Data Quality Checks
-
-Phase 1 should add validation before returning analytical answers.
-
-| Check | Purpose |
-|---|---|
-| Empty result check | Prevents answers from being generated with no matching rows. |
-| Required field check | Confirms the metric has the fields it needs. |
-| Duplicate ID check | Finds duplicated orders or campaigns. |
-| Missing value check | Flags missing required values. |
-| Invalid denominator check | Prevents divide-by-zero metrics. |
-| Date range check | Confirms the answer covers a known period. |
-| Unsupported filter check | Prevents pretending a filter was applied when the field is not available. |
-| Warning propagation | Ensures warnings reach the final response. |
+The Response Composer may explain this verified payload, but must not recalculate or invent additional values.
 
 ## Response Requirements
 
-Every successful Phase 1 response should include:
+Every successful analytics response should include:
 
 - direct answer first
-- supporting numbers
+- verified metric value
 - dataset name
 - record count
-- date period
+- date range
 - warnings, if any
-- short recommendation, if useful
 
-Controlled failure responses should not pretend an analytical result exists.
+The Response Composer should not mention SQL, workflow nodes, credentials, raw payloads, or internal implementation details. The Response Safety Guard checks this before the final response is returned.
 
-## Execution Logging Contract
+## Execution Logging
 
-The execution log should store enough information to debug and evaluate the workflow.
+The execution log records both success and controlled-failure paths.
 
 Recommended fields:
 
@@ -315,82 +341,42 @@ Recommended fields:
 | `trace_id` | Correlates a user request across workflow nodes. |
 | `created_at` | Records when the execution happened. |
 | `user_question` | Preserves the original user request for evaluation. |
-| `route` | Records supported, clarification, unsupported or invalid-plan handling. |
-| `selected_dataset` | Records ecommerce, marketing or null. |
-| `analysis_type` | Records the selected generic analysis pattern. |
+| `selected_dataset` | Records ecommerce, marketing, or unknown. |
+| `analysis_type` | Records the selected analysis pattern. |
 | `metrics` | Records selected metrics as structured data. |
-| `dimensions` | Records selected dimensions as structured data. |
 | `row_count` | Records how much data supported the answer. |
 | `date_start` / `date_end` | Records the covered date period. |
-| `warnings` | Records validation warnings. |
-| `status` | Records success or failure. |
-| `latency_ms` | Supports performance debugging. |
-| `error_message` | Captures controlled failures or unexpected errors. |
+| `warnings` | Records validation, data-quality, or security warnings. |
+| `status` | Records success, warning, failure, unsupported, clarification, invalid plan, or security blocked. |
 
-## Repository Documentation Expectations
+Execution logging makes the workflow auditable and gives the project a practical path for regression testing and future improvement.
 
-P1-T01 is complete when the repository explains:
+## Repository Contracts
 
-- the original prototype flow and its limitations
-- the Supabase-backed Phase 1 target architecture
-- the single-workflow responsibility-separation decision
-- how the planner, validator, query builder, result validator, response composer and logger interact
-- what must be exported once the n8n workflow is ready
-- what must never be committed, including credentials and private connection strings
+The repository should keep these contracts aligned with the live workflow:
 
-## Files Expected After Phase 1 Workflow Export
+| File | Purpose |
+|---|---|
+| `workflows/business-data-analyst-chatbot.workflow.json` | Sanitized importable n8n workflow. |
+| `database/schema.sql` | Supabase table contract and seed metadata. |
+| `docs/database-setup.md` | Human-readable database setup guide. |
+| `schemas/analysis-plan.schema.json` | Planner structured output contract. |
+| `schemas/metric-registry.json` | Repository-level metric registry reference. |
+| `prompts/orchestrator-planner.md` | Planner prompt reference. |
 
-The workflow export is intentionally pending until the Phase 1 workflow is ready. Once ready, add:
-
-```text
-workflows/01-reliable-analytics-foundation.json
-```
-
-Supporting files expected over Phase 1:
-
-```text
-docs/
-├── architecture.md
-├── evaluation.md
-└── operating-guide.md
-
-prompts/
-├── orchestrator-planner.md
-└── response-composer.md
-
-schemas/
-├── analysis-plan.schema.json
-├── dataset-dictionary.json
-├── metric-registry.json
-├── analytics-result.schema.json
-└── warnings.schema.json
-
-evaluations/
-└── phase1-golden-questions.csv
-```
-
-## Phase 1 Acceptance Criteria
-
-Phase 1 is complete when:
-
-- the planner selects the correct dataset for at least 90% of Phase 1 test questions
-- all numerical answers match trusted reference SQL calculations
-- the workflow does not answer when required data is unavailable
-- every successful answer includes dataset name, record count, date period and warnings where relevant
-- workflow JSON files and repository files contain no secrets or private credential values
-- test questions are documented and repeatable
-- repository documentation explains setup, architecture and limitations
+Do not commit secrets, private webhook URLs, n8n credential IDs, model API keys, Supabase passwords, or private connection strings.
 
 ## Rationale
 
-The purpose of Phase 1 is to turn the prototype into a reliable analytical foundation.
+The workflow does not rely on the LLM to be correct or safe by itself.
 
-The key architectural rule is:
+Each risky boundary has a deterministic gate:
 
 ```text
-The language model plans and explains.
-Supabase SQL calculates.
-Workflow nodes validate and enforce the process.
+The planner may propose.
+The guards must verify.
+The database must enforce.
+The response must disclose.
 ```
 
-This separation makes the system easier to test, easier to debug and safer to use in real business scenarios.
+This separation makes the system easier to test, easier to debug, safer to operate, and more realistic as a business data agent.
